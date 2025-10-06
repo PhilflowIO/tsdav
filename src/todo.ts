@@ -103,6 +103,7 @@ export const fetchTodos = async (params: {
   objectUrls?: string[];
   filters?: ElementCompact;
   timeRange?: { start: string; end: string };
+  expand?: boolean;
   urlFilter?: (url: string) => boolean;
   headers?: Record<string, string>;
   headersToExclude?: string[];
@@ -115,6 +116,7 @@ export const fetchTodos = async (params: {
     filters: customFilters,
     timeRange,
     headers,
+    expand,
     urlFilter = (url: string) => Boolean(url?.includes('.ics')),
     useMultiGet = true,
     headersToExclude,
@@ -185,7 +187,24 @@ export const fetchTodos = async (params: {
       await todoQuery({
         url: calendar.url,
         props: {
-          [`${DAVNamespaceShort.DAV}:getetag`]: {},
+          [`${DAVNamespaceShort.DAV}:getetag`]: {
+            ...(expand && timeRange
+              ? {
+                  [`${DAVNamespaceShort.CALDAV}:expand`]: {
+                    _attributes: {
+                      start: `${new Date(timeRange.start)
+                        .toISOString()
+                        .slice(0, 19)
+                        .replace(/[-:.]/g, '')}Z`,
+                      end: `${new Date(timeRange.end)
+                        .toISOString()
+                        .slice(0, 19)
+                        .replace(/[-:.]/g, '')}Z`,
+                    },
+                  },
+                }
+              : {}),
+          },
         },
         filters,
         depth: '1',
@@ -201,12 +220,29 @@ export const fetchTodos = async (params: {
   let todoObjectResults: DAVResponse[] = [];
 
   if (todoObjectUrls.length > 0) {
-    if (!useMultiGet) {
+    if (!useMultiGet || expand) {
       todoObjectResults = await todoQuery({
         url: calendar.url,
         props: {
           [`${DAVNamespaceShort.DAV}:getetag`]: {},
-          [`${DAVNamespaceShort.CALDAV}:calendar-data`]: {},
+          [`${DAVNamespaceShort.CALDAV}:calendar-data`]: {
+            ...(expand && timeRange
+              ? {
+                  [`${DAVNamespaceShort.CALDAV}:expand`]: {
+                    _attributes: {
+                      start: `${new Date(timeRange.start)
+                        .toISOString()
+                        .slice(0, 19)
+                        .replace(/[-:.]/g, '')}Z`,
+                      end: `${new Date(timeRange.end)
+                        .toISOString()
+                        .slice(0, 19)
+                        .replace(/[-:.]/g, '')}Z`,
+                    },
+                  },
+                }
+              : {}),
+          },
         },
         filters,
         depth: '1',
@@ -218,7 +254,24 @@ export const fetchTodos = async (params: {
         url: calendar.url,
         props: {
           [`${DAVNamespaceShort.DAV}:getetag`]: {},
-          [`${DAVNamespaceShort.CALDAV}:calendar-data`]: {},
+          [`${DAVNamespaceShort.CALDAV}:calendar-data`]: {
+            ...(expand && timeRange
+              ? {
+                  [`${DAVNamespaceShort.CALDAV}:expand`]: {
+                    _attributes: {
+                      start: `${new Date(timeRange.start)
+                        .toISOString()
+                        .slice(0, 19)
+                        .replace(/[-:.]/g, '')}Z`,
+                      end: `${new Date(timeRange.end)
+                        .toISOString()
+                        .slice(0, 19)
+                        .replace(/[-:.]/g, '')}Z`,
+                    },
+                  },
+                }
+              : {}),
+          },
         },
         objectUrls: todoObjectUrls,
         depth: '1',

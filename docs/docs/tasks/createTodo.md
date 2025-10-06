@@ -28,17 +28,17 @@ END:VCALENDAR`,
 
 ### Arguments
 
-- `calendar` [DAVCalendar](../types/DAVCalendar.md)
-- `iCalString` todo data in iCal format (must contain VTODO component)
-- `filename` filename for the new todo object (e.g., 'task.ics')
+- `calendar` **required**, the [DAVCalendar](../types/DAVCalendar.md) which the client wish to create object on.
+- `filename` **required**, file name of the new todo object, should end in `.ics`
+- `iCalString` **required**, todo data in iCal format (must contain VTODO component)
 - `headers` request headers
 - `headersToExclude` array of keys of the headers you want to exclude
 - `fetchOptions` options to pass to underlying fetch function
 
 ### Return Value
 
-`Response` from fetch api
+[fetch api response](https://developer.mozilla.org/en-US/docs/Web/API/Response)
 
 ### Behavior
 
-use `PUT` to create new todo object at the specified URL with `If-None-Match: *` header to prevent overwriting existing objects
+use PUT request to create a new todo object

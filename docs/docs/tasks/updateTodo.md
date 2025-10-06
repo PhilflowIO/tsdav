@@ -21,18 +21,15 @@ await updateTodo({
 
 ### Arguments
 
-- `todo` [DAVCalendarObject](../types/DAVCalendarObject.md) with updated data
-  - `url` URL of the todo object
-  - `data` updated todo data in iCal format
-  - `etag` current ETag for concurrency control
+- `todo` **required**, [DAVCalendarObject](../types/DAVCalendarObject.md) to update
 - `headers` request headers
 - `headersToExclude` array of keys of the headers you want to exclude
 - `fetchOptions` options to pass to underlying fetch function
 
 ### Return Value
 
-`Response` from fetch api
+[fetch api response](https://developer.mozilla.org/en-US/docs/Web/API/Response)
 
 ### Behavior
 
-use `PUT` to update todo object with `If-Match` header containing the ETag for optimistic concurrency control
+use PUT request to update a todo object

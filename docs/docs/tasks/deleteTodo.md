@@ -20,17 +20,15 @@ await deleteTodo({
 
 ### Arguments
 
-- `todo` [DAVCalendarObject](../types/DAVCalendarObject.md)
-  - `url` URL of the todo object to delete
-  - `etag` current ETag for concurrency control
+- `todo` **required**, [DAVCalendarObject](../types/DAVCalendarObject.md) to delete
 - `headers` request headers
 - `headersToExclude` array of keys of the headers you want to exclude
 - `fetchOptions` options to pass to underlying fetch function
 
 ### Return Value
 
-`Response` from fetch api
+[fetch api response](https://developer.mozilla.org/en-US/docs/Web/API/Response)
 
 ### Behavior
 
-use `DELETE` to remove todo object with `If-Match` header containing the ETag for optimistic concurrency control
+use DELETE request to delete a todo object
