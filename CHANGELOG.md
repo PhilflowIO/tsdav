@@ -1,3 +1,16 @@
+## v2.2.0
+
+**features**
+- new VTODO (tasks/reminders) support
+  - `fetchTodos` - fetch all todos from a calendar
+  - `createTodo` - create a new todo
+  - `updateTodo` - update an existing todo
+  - `deleteTodo` - delete a todo
+  - `todoQuery` - perform calendar-query filtered for VTODO
+  - `todoMultiGet` - fetch multiple specific todos efficiently
+- all VTODO functions available in DAVClient class and as standalone functions
+- full support for VTODO components in CalDAV calendars
+
 ## v2.1.5
 
 ##### improvements
