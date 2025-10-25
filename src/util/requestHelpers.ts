@@ -71,3 +71,20 @@ export const excludeHeaders = (
     Object.entries(headers).filter(([key]) => !headersToExclude.includes(key)),
   );
 };
+
+const DEFAULT_ICAL_EXTENSION = '.ics';
+
+export const defaultIcsFilter = (url: string): boolean =>
+  Boolean(url?.includes(DEFAULT_ICAL_EXTENSION));
+
+export const validateISO8601TimeRange = (start: string, end: string): void => {
+  const ISO_8601 = /^\d{4}(-\d\d(-\d\d(T\d\d:\d\d(:\d\d)?(\.\d+)?(([+-]\d\d:\d\d)|Z)?)?)?)?$/i;
+  const ISO_8601_FULL = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?(([+-]\d\d:\d\d)|Z)?$/i;
+
+  if (
+    (!ISO_8601.test(start) || !ISO_8601.test(end)) &&
+    (!ISO_8601_FULL.test(start) || !ISO_8601_FULL.test(end))
+  ) {
+    throw new Error('invalid timeRange format, not in ISO8601');
+  }
+};

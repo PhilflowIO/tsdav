@@ -11,9 +11,11 @@ import { DAVAccount, DAVCalendar, DAVCalendarObject } from './types/models';
 import {
   cleanupFalsy,
   conditionalParam,
+  defaultIcsFilter,
   excludeHeaders,
   getDAVAttribute,
   urlContains,
+  validateISO8601TimeRange,
 } from './util/requestHelpers';
 import { findMissingFieldNames, hasFields } from './util/typeHelpers';
 
@@ -276,22 +278,14 @@ export const fetchCalendarObjects = async (params: {
     timeRange,
     headers,
     expand,
-    urlFilter = (url: string) => Boolean(url?.includes('.ics')),
+    urlFilter = defaultIcsFilter,
     useMultiGet = true,
     headersToExclude,
     fetchOptions = {},
   } = params;
 
   if (timeRange) {
-    // validate timeRange
-    const ISO_8601 = /^\d{4}(-\d\d(-\d\d(T\d\d:\d\d(:\d\d)?(\.\d+)?(([+-]\d\d:\d\d)|Z)?)?)?)?$/i;
-    const ISO_8601_FULL = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?(([+-]\d\d:\d\d)|Z)?$/i;
-    if (
-      (!ISO_8601.test(timeRange.start) || !ISO_8601.test(timeRange.end)) &&
-      (!ISO_8601_FULL.test(timeRange.start) || !ISO_8601_FULL.test(timeRange.end))
-    ) {
-      throw new Error('invalid timeRange format, not in ISO8601');
-    }
+    validateISO8601TimeRange(timeRange.start, timeRange.end);
   }
   debug(`Fetching calendar objects from ${calendar?.url}`);
   const requiredFields: Array<'url'> = ['url'];
@@ -607,15 +601,7 @@ export const freeBusyQuery = async (params: {
   const { url, timeRange, depth, headers, headersToExclude, fetchOptions = {} } = params;
 
   if (timeRange) {
-    // validate timeRange
-    const ISO_8601 = /^\d{4}(-\d\d(-\d\d(T\d\d:\d\d(:\d\d)?(\.\d+)?(([+-]\d\d:\d\d)|Z)?)?)?)?$/i;
-    const ISO_8601_FULL = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?(([+-]\d\d:\d\d)|Z)?$/i;
-    if (
-      (!ISO_8601.test(timeRange.start) || !ISO_8601.test(timeRange.end)) &&
-      (!ISO_8601_FULL.test(timeRange.start) || !ISO_8601_FULL.test(timeRange.end))
-    ) {
-      throw new Error('invalid timeRange format, not in ISO8601');
-    }
+    validateISO8601TimeRange(timeRange.start, timeRange.end);
   } else {
     throw new Error('timeRange is required');
   }
