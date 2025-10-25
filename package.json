@@ -49,6 +49,7 @@
     "base-64": "1.0.0",
     "cross-fetch": "4.1.0",
     "debug": "4.4.1",
+    "ical.js": "^2.0.0",
     "xml-js": "1.6.11"
   },
   "devDependencies": {
