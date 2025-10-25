@@ -304,13 +304,13 @@ export function extractTodoFields(calendarObject: DAVCalendarObject): TodoFields
 
   // Extract SUMMARY
   const summary = vtodo.getFirstPropertyValue('summary');
-  if (summary !== null) {
+  if (summary !== null && typeof summary === 'string') {
     fields.SUMMARY = summary;
   }
 
   // Extract DESCRIPTION
   const description = vtodo.getFirstPropertyValue('description');
-  if (description !== null) {
+  if (description !== null && typeof description === 'string') {
     fields.DESCRIPTION = description;
   }
 

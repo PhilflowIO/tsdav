@@ -242,7 +242,7 @@ export function updateVCardFields(
     const rev = vcard.getFirstPropertyValue('rev');
     if (rev) {
       // Convert ICAL.Time to string
-      if (rev.toICALString) {
+      if (typeof rev === 'object' && 'toICALString' in rev && typeof rev.toICALString === 'function') {
         result.metadata.dtstamp = rev.toICALString();
       } else {
         result.metadata.dtstamp = rev.toString();

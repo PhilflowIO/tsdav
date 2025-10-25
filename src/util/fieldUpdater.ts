@@ -207,7 +207,7 @@ export function serializeICalComponent(component: ICAL.Component): string {
  */
 export function updateSequence(component: ICAL.Component): void {
   const currentSequence = component.getFirstPropertyValue('sequence');
-  const newSequence = currentSequence !== null ? currentSequence + 1 : 0;
+  const newSequence = typeof currentSequence === 'number' ? currentSequence + 1 : 0;
 
   if (component.getFirstProperty('sequence')) {
     component.updatePropertyWithValue('sequence', newSequence);
@@ -312,7 +312,7 @@ export function preserveVendorProperties(
  */
 export function getSequence(component: ICAL.Component): number {
   const sequence = component.getFirstPropertyValue('sequence');
-  return sequence !== null ? sequence : 0;
+  return typeof sequence === 'number' ? sequence : 0;
 }
 
 /**
@@ -326,7 +326,7 @@ export function getDtstamp(component: ICAL.Component): string | null {
   if (!dtstamp) return null;
 
   // If it's an ICAL.Time object, convert to iCal format
-  if (dtstamp.toICALString) {
+  if (typeof dtstamp === 'object' && 'toICALString' in dtstamp && typeof dtstamp.toICALString === 'function') {
     return dtstamp.toICALString();
   }
 

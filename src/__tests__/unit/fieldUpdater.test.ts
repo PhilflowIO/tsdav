@@ -290,7 +290,9 @@ describe('fieldUpdater', () => {
         expect(newDtstamp).not.toBe(oldDtstamp);
         // ICAL.Time object can be in ISO or iCal format, just check it's a valid timestamp
         expect(newDtstamp).toBeTruthy();
-        expect(newDtstamp.toString()).toMatch(/^\d{4}/); // Starts with year
+        if (newDtstamp) {
+          expect(newDtstamp.toString()).toMatch(/^\d{4}/); // Starts with year
+        }
       }
     });
 
@@ -314,7 +316,9 @@ describe('fieldUpdater', () => {
 
         expect(dtstamp).toBeTruthy();
         // Check it's a valid ICAL.Time object
-        expect(dtstamp.toString()).toMatch(/^\d{4}/); // Starts with year
+        if (dtstamp) {
+          expect(dtstamp.toString()).toMatch(/^\d{4}/); // Starts with year
+        }
       }
     });
   });
