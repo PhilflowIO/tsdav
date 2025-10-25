@@ -279,3 +279,76 @@ test('fetchCalendarObjects should fail when passed timeRange is invalid', async 
 
   expect(t()).rejects.toEqual(new Error('invalid timeRange format, not in ISO8601'));
 });
+
+test('updateEventFields should update calendar event fields and auto-increment SEQUENCE', async () => {
+  // Import the new field updater
+  const { updateEventFields } = await import('../../../util/calendarFieldUpdater');
+  const { updateCalendarObject } = await import('../../../calendar');
+
+  const iCalString = await fsp.readFile(`${__dirname}/../data/ical/1.ics`, 'utf-8');
+  const calendars = await fetchCalendars({
+    account,
+    headers: authHeaders,
+  });
+
+  // Create a test event
+  const objectUrl = new URL('field-update-test.ics', calendars[0].url).href;
+  const createResponse = await createObject({
+    url: objectUrl,
+    data: iCalString,
+    headers: {
+      'content-type': 'text/calendar; charset=utf-8',
+      ...authHeaders,
+    },
+  });
+  expect(createResponse.ok).toBe(true);
+
+  // Fetch the event back
+  let objects = await fetchCalendarObjects({
+    calendar: calendars[0],
+    headers: authHeaders,
+  });
+
+  const event = objects.find((o) => o.url === objectUrl);
+  expect(event).toBeTruthy();
+
+  if (event) {
+    // Update using field-based updater
+    const updated = updateEventFields(event, {
+      SUMMARY: 'Updated via Field Updater',
+      DESCRIPTION: 'This event was updated using the new field-based update API'
+    });
+
+    expect(updated.modified).toBe(true);
+    expect(updated.data).toContain('SUMMARY:Updated via Field Updater');
+    expect(updated.metadata?.sequence).toBeGreaterThanOrEqual(0);
+
+    // Send update to server
+    const updateResponse = await updateCalendarObject({
+      calendarObject: {
+        ...event,
+        data: updated.data
+      },
+      headers: authHeaders,
+    });
+
+    expect(updateResponse.ok).toBe(true);
+
+    // Fetch back and verify
+    objects = await fetchCalendarObjects({
+      calendar: calendars[0],
+      headers: authHeaders,
+    });
+
+    const refetchedEvent = objects.find((o) => o.url === objectUrl);
+    expect(refetchedEvent?.data).toContain('SUMMARY:Updated via Field Updater');
+    expect(refetchedEvent?.data).toContain('DESCRIPTION:This event was updated using the new field-based update API');
+  }
+
+  // Cleanup
+  const deleteResult = await deleteObject({
+    url: objectUrl,
+    headers: authHeaders,
+  });
+  expect(deleteResult.ok).toBe(true);
+});
