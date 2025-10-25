@@ -1,6 +1,19 @@
 ## [Unreleased]
 
 **features**
+- Field-based updates for CalDAV, CardDAV, and VTODO
+  - `updateEventFields()` - Update calendar events (VEVENT) by field without manual iCal generation
+  - `updateVCardFields()` - Update vCards by field (FN, N, EMAIL, TEL, ORG, NOTE, etc.)
+  - `updateTodoFields()` - Update todos (VTODO) by field
+  - Auto-increment SEQUENCE and update DTSTAMP/REV timestamps (RFC 5545)
+  - Preserve VTIMEZONE components and vendor extensions (X-* properties)
+  - RFC-compliant line folding for values >75 characters
+  - Helper functions: `extractEventFields()`, `extractVCardFields()`, `extractTodoFields()`, `validateVCardFields()`
+  - Batch update support: `batchUpdateTodoFields()`
+  - Type-safe with TypeScript strict mode
+  - 156 unit tests, 96.39% coverage
+  - Integration tested with Baikal CalDAV server
+
 - VTODO (tasks/reminders) support
   - `todoQuery` - Query todos with CalDAV filters
   - `todoMultiGet` - Fetch multiple todos by URL
@@ -12,6 +25,10 @@
   - Comprehensive API documentation
 
 ##### improvements
+- Added ical.js@^2.0.0 dependency for RFC 5545/6350 compliant parsing (optional, tree-shakeable)
+- Field-based updates eliminate need for manual iCal string generation
+- Simplified API for common update operations (3 lines vs 50+ lines of iCal)
+- Better AI/LLM integration support with structured field updates
 - Added utility functions for ISO8601 validation and ICS filtering
 - Eliminated code duplication in expand prop building
 - Enhanced error handling with UID and etag validation

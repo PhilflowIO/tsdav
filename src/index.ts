@@ -20,6 +20,13 @@ export type {
   DAVObject,
   DAVVCard,
 } from './types/models';
+export type {
+  BaseFieldUpdaterConfig,
+  EventFields,
+  FieldUpdateResult,
+  TodoFields,
+  VCardFields,
+} from './types/fieldUpdates';
 
 export { DAVClient } from './client';
 
@@ -67,6 +74,15 @@ export {
   updateTodo,
   deleteTodo,
 } from './todo';
+
+export { updateEventFields, hasValidVEvent, extractEventFields } from './util/calendarFieldUpdater';
+export { updateVCardFields, validateVCardFields, extractVCardFields } from './util/vCardFieldUpdater';
+export {
+  updateTodoFields,
+  batchUpdateTodoFields,
+  isTodoObject,
+  extractTodoFields,
+} from './util/todoFieldUpdater';
 
 export {
   getBasicAuthHeaders,
