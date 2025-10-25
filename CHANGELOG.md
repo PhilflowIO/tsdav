@@ -1,3 +1,22 @@
+## [Unreleased]
+
+**features**
+- VTODO (tasks/reminders) support
+  - `todoQuery` - Query todos with CalDAV filters
+  - `todoMultiGet` - Fetch multiple todos by URL
+  - `fetchTodos` - High-level API to fetch todos with filtering and timeRange support
+  - `createTodo` - Create new todo items with UID validation
+  - `updateTodo` - Update existing todos with etag validation
+  - `deleteTodo` - Delete todo items
+  - Integration tests for Radicale server
+  - Comprehensive API documentation
+
+##### improvements
+- Added utility functions for ISO8601 validation and ICS filtering
+- Eliminated code duplication in expand prop building
+- Enhanced error handling with UID and etag validation
+- Added comprehensive edge case test coverage
+
 ## v2.1.5
 
 ##### improvements
