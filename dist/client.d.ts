@@ -2,6 +2,7 @@ import { addressBookMultiGet as rawAddressBookMultiGet, addressBookQuery as rawA
 import { calendarMultiGet as rawCalendarMultiGet, calendarQuery as rawCalendarQuery, createCalendarObject as rawCreateCalendarObject, deleteCalendarObject as rawDeleteCalendarObject, fetchCalendarObjects as rawFetchCalendarObjects, fetchCalendars as rawFetchCalendars, makeCalendar as rawMakeCalendar, updateCalendarObject as rawUpdateCalendarObject, fetchCalendarUserAddresses as rawFetchCalendarUserAddresses } from './calendar';
 import { collectionQuery as rawCollectionQuery, isCollectionDirty as rawIsCollectionDirty, makeCollection as rawMakeCollection, supportedReportSet as rawSupportedReportSet, syncCollection as rawSyncCollection } from './collection';
 import { createObject as rawCreateObject, deleteObject as rawDeleteObject, propfind as rawPropfind, updateObject as rawUpdateObject } from './request';
+import { createTodo as rawCreateTodo, deleteTodo as rawDeleteTodo, fetchTodos as rawFetchTodos, todoMultiGet as rawTodoMultiGet, todoQuery as rawTodoQuery, updateTodo as rawUpdateTodo } from './todo';
 import { DAVRequest, DAVResponse } from './types/DAVTypes';
 import { SmartCollectionSync, SyncCalendars } from './types/functionsOverloads';
 import { DAVAccount, DAVAddressBook, DAVCalendar, DAVCalendarObject, DAVCollection, DAVCredentials, DAVObject, DAVVCard } from './types/models';
@@ -230,6 +231,62 @@ export declare const createDAVClient: (params: {
         headersToExclude?: string[];
         fetchOptions?: RequestInit;
     }) => Promise<Response>;
+    todoQuery: (params: {
+        url: string;
+        props: import("xml-js/types").ElementCompact;
+        filters?: import("xml-js/types").ElementCompact;
+        timezone?: string;
+        depth?: import("./types/DAVTypes").DAVDepth;
+        headers?: Record<string, string>;
+        headersToExclude?: string[];
+        fetchOptions?: RequestInit;
+    }) => Promise<DAVResponse[]>;
+    todoMultiGet: (params: {
+        url: string;
+        props: import("xml-js/types").ElementCompact;
+        objectUrls?: string[];
+        timezone?: string;
+        depth: import("./types/DAVTypes").DAVDepth;
+        filters?: import("xml-js/types").ElementCompact;
+        headers?: Record<string, string>;
+        headersToExclude?: string[];
+        fetchOptions?: RequestInit;
+    }) => Promise<DAVResponse[]>;
+    fetchTodos: (params: {
+        calendar: DAVCalendar;
+        objectUrls?: string[];
+        filters?: import("xml-js/types").ElementCompact;
+        timeRange?: {
+            start: string;
+            end: string;
+        };
+        expand?: boolean;
+        urlFilter?: (url: string) => boolean;
+        headers?: Record<string, string>;
+        headersToExclude?: string[];
+        useMultiGet?: boolean;
+        fetchOptions?: RequestInit;
+    }) => Promise<DAVObject[]>;
+    createTodo: (params: {
+        calendar: DAVCalendar;
+        iCalString: string;
+        filename: string;
+        headers?: Record<string, string>;
+        headersToExclude?: string[];
+        fetchOptions?: RequestInit;
+    }) => Promise<Response>;
+    updateTodo: (params: {
+        calendarObject: DAVCalendarObject;
+        headers?: Record<string, string>;
+        headersToExclude?: string[];
+        fetchOptions?: RequestInit;
+    }) => Promise<Response>;
+    deleteTodo: (params: {
+        calendarObject: DAVCalendarObject;
+        headers?: Record<string, string>;
+        headersToExclude?: string[];
+        fetchOptions?: RequestInit;
+    }) => Promise<Response>;
 }>;
 export declare class DAVClient {
     serverUrl: string;
@@ -314,4 +371,10 @@ export declare class DAVClient {
     createVCard(...params: Parameters<typeof rawCreateVCard>): Promise<Response>;
     updateVCard(...params: Parameters<typeof rawUpdateVCard>): Promise<Response>;
     deleteVCard(...params: Parameters<typeof rawDeleteVCard>): Promise<Response>;
+    todoQuery(...params: Parameters<typeof rawTodoQuery>): Promise<DAVResponse[]>;
+    todoMultiGet(...params: Parameters<typeof rawTodoMultiGet>): Promise<DAVResponse[]>;
+    fetchTodos(...params: Parameters<typeof rawFetchTodos>): Promise<DAVCalendarObject[]>;
+    createTodo(...params: Parameters<typeof rawCreateTodo>): Promise<Response>;
+    updateTodo(...params: Parameters<typeof rawUpdateTodo>): Promise<Response>;
+    deleteTodo(...params: Parameters<typeof rawDeleteTodo>): Promise<Response>;
 }
