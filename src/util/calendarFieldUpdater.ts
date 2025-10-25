@@ -262,13 +262,13 @@ export function extractEventFields(calendarObject: DAVCalendarObject): EventFiel
 
     // Extract SUMMARY
     const summary = vevent.getFirstPropertyValue('summary');
-    if (summary !== null && summary !== undefined) {
+    if (summary !== null && summary !== undefined && typeof summary === 'string') {
       fields.SUMMARY = summary;
     }
 
     // Extract DESCRIPTION
     const description = vevent.getFirstPropertyValue('description');
-    if (description !== null && description !== undefined) {
+    if (description !== null && description !== undefined && typeof description === 'string') {
       fields.DESCRIPTION = description;
     }
 
