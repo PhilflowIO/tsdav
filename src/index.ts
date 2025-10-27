@@ -5,6 +5,7 @@ import * as client from './client';
 import * as collection from './collection';
 import { DAVAttributeMap, DAVNamespace, DAVNamespaceShort } from './consts';
 import * as request from './request';
+import * as todo from './todo';
 import * as authHelpers from './util/authHelpers';
 import * as requestHelpers from './util/requestHelpers';
 
@@ -59,6 +60,15 @@ export {
 } from './addressBook';
 
 export {
+  todoQuery,
+  todoMultiGet,
+  fetchTodos,
+  createTodo,
+  updateTodo,
+  deleteTodo,
+} from './todo';
+
+export {
   getBasicAuthHeaders,
   getOauthHeaders,
   fetchOauthTokens,
@@ -76,6 +86,7 @@ export default {
   ...account,
   ...addressBook,
   ...calendar,
+  ...todo,
   ...authHelpers,
   ...requestHelpers,
 };
