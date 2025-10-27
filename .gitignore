@@ -105,3 +105,11 @@ typings/
 .tern-port
 .DS_Store
 .vscode/settings.json
+
+# Private planning/analysis documents (keep local only)
+CLEANUP_PLAN.md
+DECISIONS.md
+FIELD_UPDATES_FINDINGS.md
+FIELD_UPDATES_IMPLEMENTATION_PLAN.md
+ISSUE_5_RESPONSE.md
+COMPLETED_TODAY.md
