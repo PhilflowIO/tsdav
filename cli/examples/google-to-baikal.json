@@ -1,0 +1,31 @@
+{
+  "source": {
+    "provider": "google",
+    "serverUrl": "https://apidata.googleusercontent.com/caldav/v2/",
+    "authMethod": "Oauth",
+    "credentials": {
+      "username": "your-email@gmail.com",
+      "clientId": "env:GOOGLE_CLIENT_ID",
+      "clientSecret": "env:GOOGLE_CLIENT_SECRET",
+      "refreshToken": "env:GOOGLE_REFRESH_TOKEN"
+    }
+  },
+  "target": {
+    "provider": "baikal",
+    "serverUrl": "https://dav.yourdomain.com",
+    "authMethod": "Basic",
+    "credentials": {
+      "username": "env:BAIKAL_USERNAME",
+      "password": "env:BAIKAL_PASSWORD"
+    }
+  },
+  "options": {
+    "overwrite": false,
+    "interactive": false,
+    "dryRun": false,
+    "rateLimit": {
+      "source": 2,
+      "target": 10
+    }
+  }
+}

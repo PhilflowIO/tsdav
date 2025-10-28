@@ -1,0 +1,30 @@
+{
+  "source": {
+    "provider": "nextcloud",
+    "serverUrl": "https://your-nextcloud-instance.com",
+    "authMethod": "Basic",
+    "credentials": {
+      "username": "env:NEXTCLOUD_USERNAME",
+      "password": "env:NEXTCLOUD_APP_PASSWORD"
+    }
+  },
+  "target": {
+    "provider": "baikal",
+    "serverUrl": "https://dav.yourdomain.com",
+    "authMethod": "Basic",
+    "credentials": {
+      "username": "env:BAIKAL_USERNAME",
+      "password": "env:BAIKAL_PASSWORD"
+    }
+  },
+  "options": {
+    "overwrite": false,
+    "interactive": false,
+    "dryRun": false,
+    "rateLimit": {
+      "source": 10,
+      "target": 10
+    },
+    "calendarFilter": "^(Personal|Work)$"
+  }
+}
