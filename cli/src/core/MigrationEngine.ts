@@ -40,6 +40,56 @@ export class MigrationEngine {
   }
 
   /**
+   * Helper: Extract displayName as string (handle objects from Baïkal/XML parsing)
+   *
+   * Baikal often returns empty displayName objects, so we fallback to URL parsing.
+   * Example: /calendars/user/project-luna/ → "project-luna"
+   */
+  private getDisplayName(calendar: DAVCalendar, fallback: string = 'Unnamed Calendar'): string {
+    // Try string displayName first
+    if (typeof calendar.displayName === 'string' && calendar.displayName.trim()) {
+      return calendar.displayName.trim();
+    }
+
+    // Handle complex objects (e.g., from Baïkal XML parsing)
+    if (calendar.displayName && typeof calendar.displayName === 'object') {
+      const obj = calendar.displayName as any;
+      if (obj._text && String(obj._text).trim()) return String(obj._text).trim();
+      if (obj.value && String(obj.value).trim()) return String(obj.value).trim();
+      if (obj.toString && obj.toString() !== '[object Object]') {
+        const strVal = obj.toString().trim();
+        if (strVal) return strVal;
+      }
+    }
+
+    // Fallback: Extract name from calendar URL (common for Baikal)
+    // Example: /dav.php/calendars/tester/project-luna/ → "project-luna"
+    if (calendar.url) {
+      try {
+        const urlPath = calendar.url.replace(/\/$/, ''); // Remove trailing slash
+        const pathSegments = urlPath.split('/').filter(s => s.length > 0);
+
+        // Get last meaningful segment (skip common prefixes like "dav.php", "calendars")
+        for (let i = pathSegments.length - 1; i >= 0; i--) {
+          const segment = pathSegments[i];
+          // Skip technical segments
+          if (!segment.includes('.php') && segment !== 'calendars' && segment !== 'addressbooks') {
+            // Decode URL encoding and humanize (replace hyphens/underscores with spaces)
+            const humanized = decodeURIComponent(segment)
+              .replace(/[-_]/g, ' ')
+              .replace(/\b\w/g, c => c.toUpperCase()); // Capitalize words
+            return humanized;
+          }
+        }
+      } catch (e) {
+        // URL parsing failed, continue to fallback
+      }
+    }
+
+    return fallback;
+  }
+
+  /**
    * Initialize clients and authenticate
    */
   async initialize(): Promise<void> {
@@ -90,7 +140,7 @@ export class MigrationEngine {
         const sourceCalendar = filteredCalendars[i];
         console.log(
           chalk.blue(
-            `\n[${i + 1}/${filteredCalendars.length}] Migrating calendar: ${sourceCalendar.displayName}`
+            `\n[${i + 1}/${filteredCalendars.length}] Migrating calendar: ${this.getDisplayName(sourceCalendar)}`
           )
         );
 
@@ -134,7 +184,7 @@ export class MigrationEngine {
 
     // Get or create target calendar
     const targetCalendar = await this.getOrCreateTargetCalendar(sourceCalendar);
-    console.log(chalk.green(`  ✓ Target calendar: ${targetCalendar.displayName}`));
+    console.log(chalk.green(`  ✓ Target calendar: ${this.getDisplayName(targetCalendar)}`));
 
     // Fetch existing objects from target (for duplicate detection)
     console.log('  Fetching existing events from target calendar...');
@@ -156,12 +206,8 @@ export class MigrationEngine {
     console.log(chalk.green(`  ✓ Found ${existingUIDs.size} existing events on target`));
 
     // Add calendar to state
-    const sourceDisplayName = typeof sourceCalendar.displayName === 'string'
-      ? sourceCalendar.displayName
-      : 'Unnamed Calendar';
-    const targetDisplayName = typeof targetCalendar.displayName === 'string'
-      ? targetCalendar.displayName
-      : 'Unnamed Calendar';
+    const sourceDisplayName = this.getDisplayName(sourceCalendar);
+    const targetDisplayName = this.getDisplayName(targetCalendar);
 
     const calendarId = this.stateManager.addCalendar(
       sourceCalendar.url,
@@ -338,22 +384,34 @@ export class MigrationEngine {
     const targetCalendars = await this.targetClient.fetchCalendars();
 
     // Try to find existing calendar with same display name
+    const sourceDisplayName = this.getDisplayName(sourceCalendar);
     const existingCalendar = targetCalendars.find(
-      (cal) => cal.displayName === sourceCalendar.displayName
+      (cal) => this.getDisplayName(cal) === sourceDisplayName
     );
 
     if (existingCalendar) {
       return existingCalendar;
     }
 
-    // Create new calendar on target
-    console.log(`  Creating new calendar on target: ${sourceCalendar.displayName}`);
+    // Check if target is Google (which doesn't support calendar creation via CalDAV)
+    if (this.config.target.provider === 'google') {
+      throw new Error(
+        `Calendar "${sourceDisplayName}" not found on Google Calendar.\n\n` +
+        `Google CalDAV API does not support creating calendars.\n` +
+        `Please create the calendar manually on Google Calendar first:\n` +
+        `  1. Go to https://calendar.google.com\n` +
+        `  2. Create a new calendar named: "${sourceDisplayName}"\n` +
+        `  3. Re-run the migration\n\n` +
+        `Alternative: Use calendar mapping in config to migrate to an existing calendar.`
+      );
+    }
+
+    // Create new calendar on target (non-Google providers)
+    console.log(`  Creating new calendar on target: ${sourceDisplayName}`);
     await this.targetRateLimiter.throttle();
 
     // Generate unique URL for new calendar
-    const displayNameStr = typeof sourceCalendar.displayName === 'string'
-      ? sourceCalendar.displayName
-      : 'Migrated Calendar';
+    const displayNameStr = this.getDisplayName(sourceCalendar, 'Migrated Calendar');
     const calendarName = displayNameStr.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase() ||
       `calendar-${Date.now()}`;
     const newCalendarUrl = `${this.targetClient.account?.homeUrl}/${calendarName}/`;
@@ -372,7 +430,7 @@ export class MigrationEngine {
     const newCalendar = updatedCalendars.find((cal) => cal.url === newCalendarUrl);
 
     if (!newCalendar) {
-      throw new Error(`Failed to create calendar: ${sourceCalendar.displayName}`);
+      throw new Error(`Failed to create calendar: ${displayNameStr}`);
     }
 
     return newCalendar;
@@ -389,7 +447,7 @@ export class MigrationEngine {
     try {
       const regex = new RegExp(this.config.options.calendarFilter);
       const filtered = calendars.filter((cal) => {
-        const displayName = typeof cal.displayName === 'string' ? cal.displayName : '';
+        const displayName = this.getDisplayName(cal, '');
         return regex.test(displayName);
       });
       console.log(
