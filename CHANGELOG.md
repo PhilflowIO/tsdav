@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## v2.2.0
+
 **features**
 - VTODO (tasks/reminders) support
   - `todoQuery` - Query todos with CalDAV filters

@@ -4990,7 +4990,7 @@ var _polyfillNode_string_decoder = /*#__PURE__*/Object.freeze({
 
 Readable.ReadableState = ReadableState;
 
-var debug$6 = debuglog('stream');
+var debug$7 = debuglog('stream');
 inherits(Readable, EventEmitter);
 
 function prependListener(emitter, event, fn) {
@@ -5229,7 +5229,7 @@ function howMuchToRead(n, state) {
 
 // you can override either this method, or the async _read(n) below.
 Readable.prototype.read = function (n) {
-  debug$6('read', n);
+  debug$7('read', n);
   n = parseInt(n, 10);
   var state = this._readableState;
   var nOrig = n;
@@ -5240,7 +5240,7 @@ Readable.prototype.read = function (n) {
   // already have a bunch of data in the buffer, then just trigger
   // the 'readable' event and move on.
   if (n === 0 && state.needReadable && (state.length >= state.highWaterMark || state.ended)) {
-    debug$6('read: emitReadable', state.length, state.ended);
+    debug$7('read: emitReadable', state.length, state.ended);
     if (state.length === 0 && state.ended) endReadable(this);else emitReadable(this);
     return null;
   }
@@ -5277,21 +5277,21 @@ Readable.prototype.read = function (n) {
 
   // if we need a readable event, then we need to do some reading.
   var doRead = state.needReadable;
-  debug$6('need readable', doRead);
+  debug$7('need readable', doRead);
 
   // if we currently have less than the highWaterMark, then also read some
   if (state.length === 0 || state.length - n < state.highWaterMark) {
     doRead = true;
-    debug$6('length less than watermark', doRead);
+    debug$7('length less than watermark', doRead);
   }
 
   // however, if we've ended, then there's no point, and if we're already
   // reading, then it's unnecessary.
   if (state.ended || state.reading) {
     doRead = false;
-    debug$6('reading or ended', doRead);
+    debug$7('reading or ended', doRead);
   } else if (doRead) {
-    debug$6('do read');
+    debug$7('do read');
     state.reading = true;
     state.sync = true;
     // if the length is currently zero, then we *need* a readable event.
@@ -5358,14 +5358,14 @@ function emitReadable(stream) {
   var state = stream._readableState;
   state.needReadable = false;
   if (!state.emittedReadable) {
-    debug$6('emitReadable', state.flowing);
+    debug$7('emitReadable', state.flowing);
     state.emittedReadable = true;
     if (state.sync) nextTick(emitReadable_, stream);else emitReadable_(stream);
   }
 }
 
 function emitReadable_(stream) {
-  debug$6('emit readable');
+  debug$7('emit readable');
   stream.emit('readable');
   flow(stream);
 }
@@ -5386,7 +5386,7 @@ function maybeReadMore(stream, state) {
 function maybeReadMore_(stream, state) {
   var len = state.length;
   while (!state.reading && !state.flowing && !state.ended && state.length < state.highWaterMark) {
-    debug$6('maybeReadMore read 0');
+    debug$7('maybeReadMore read 0');
     stream.read(0);
     if (len === state.length)
       // didn't get any data, stop spinning.
@@ -5419,7 +5419,7 @@ Readable.prototype.pipe = function (dest, pipeOpts) {
       break;
   }
   state.pipesCount += 1;
-  debug$6('pipe count=%d opts=%j', state.pipesCount, pipeOpts);
+  debug$7('pipe count=%d opts=%j', state.pipesCount, pipeOpts);
 
   var doEnd = (!pipeOpts || pipeOpts.end !== false);
 
@@ -5428,14 +5428,14 @@ Readable.prototype.pipe = function (dest, pipeOpts) {
 
   dest.on('unpipe', onunpipe);
   function onunpipe(readable) {
-    debug$6('onunpipe');
+    debug$7('onunpipe');
     if (readable === src) {
       cleanup();
     }
   }
 
   function onend() {
-    debug$6('onend');
+    debug$7('onend');
     dest.end();
   }
 
@@ -5448,7 +5448,7 @@ Readable.prototype.pipe = function (dest, pipeOpts) {
 
   var cleanedUp = false;
   function cleanup() {
-    debug$6('cleanup');
+    debug$7('cleanup');
     // cleanup event handlers once the pipe is broken
     dest.removeListener('close', onclose);
     dest.removeListener('finish', onfinish);
@@ -5476,7 +5476,7 @@ Readable.prototype.pipe = function (dest, pipeOpts) {
   var increasedAwaitDrain = false;
   src.on('data', ondata);
   function ondata(chunk) {
-    debug$6('ondata');
+    debug$7('ondata');
     increasedAwaitDrain = false;
     var ret = dest.write(chunk);
     if (false === ret && !increasedAwaitDrain) {
@@ -5485,7 +5485,7 @@ Readable.prototype.pipe = function (dest, pipeOpts) {
       // also returned false.
       // => Check whether `dest` is still a piping destination.
       if ((state.pipesCount === 1 && state.pipes === dest || state.pipesCount > 1 && indexOf(state.pipes, dest) !== -1) && !cleanedUp) {
-        debug$6('false write response, pause', src._readableState.awaitDrain);
+        debug$7('false write response, pause', src._readableState.awaitDrain);
         src._readableState.awaitDrain++;
         increasedAwaitDrain = true;
       }
@@ -5496,7 +5496,7 @@ Readable.prototype.pipe = function (dest, pipeOpts) {
   // if the dest has an error, then stop piping into it.
   // however, don't suppress the throwing behavior for this.
   function onerror(er) {
-    debug$6('onerror', er);
+    debug$7('onerror', er);
     unpipe();
     dest.removeListener('error', onerror);
     if (listenerCount(dest, 'error') === 0) dest.emit('error', er);
@@ -5512,14 +5512,14 @@ Readable.prototype.pipe = function (dest, pipeOpts) {
   }
   dest.once('close', onclose);
   function onfinish() {
-    debug$6('onfinish');
+    debug$7('onfinish');
     dest.removeListener('close', onclose);
     unpipe();
   }
   dest.once('finish', onfinish);
 
   function unpipe() {
-    debug$6('unpipe');
+    debug$7('unpipe');
     src.unpipe(dest);
   }
 
@@ -5528,7 +5528,7 @@ Readable.prototype.pipe = function (dest, pipeOpts) {
 
   // start the flow if it hasn't been started already.
   if (!state.flowing) {
-    debug$6('pipe resume');
+    debug$7('pipe resume');
     src.resume();
   }
 
@@ -5538,7 +5538,7 @@ Readable.prototype.pipe = function (dest, pipeOpts) {
 function pipeOnDrain(src) {
   return function () {
     var state = src._readableState;
-    debug$6('pipeOnDrain', state.awaitDrain);
+    debug$7('pipeOnDrain', state.awaitDrain);
     if (state.awaitDrain) state.awaitDrain--;
     if (state.awaitDrain === 0 && src.listeners('data').length) {
       state.flowing = true;
@@ -5622,7 +5622,7 @@ Readable.prototype.on = function (ev, fn) {
 Readable.prototype.addListener = Readable.prototype.on;
 
 function nReadingNextTick(self) {
-  debug$6('readable nexttick read 0');
+  debug$7('readable nexttick read 0');
   self.read(0);
 }
 
@@ -5631,7 +5631,7 @@ function nReadingNextTick(self) {
 Readable.prototype.resume = function () {
   var state = this._readableState;
   if (!state.flowing) {
-    debug$6('resume');
+    debug$7('resume');
     state.flowing = true;
     resume(this, state);
   }
@@ -5647,7 +5647,7 @@ function resume(stream, state) {
 
 function resume_(stream, state) {
   if (!state.reading) {
-    debug$6('resume read 0');
+    debug$7('resume read 0');
     stream.read(0);
   }
 
@@ -5659,9 +5659,9 @@ function resume_(stream, state) {
 }
 
 Readable.prototype.pause = function () {
-  debug$6('call pause flowing=%j', this._readableState.flowing);
+  debug$7('call pause flowing=%j', this._readableState.flowing);
   if (false !== this._readableState.flowing) {
-    debug$6('pause');
+    debug$7('pause');
     this._readableState.flowing = false;
     this.emit('pause');
   }
@@ -5670,7 +5670,7 @@ Readable.prototype.pause = function () {
 
 function flow(stream) {
   var state = stream._readableState;
-  debug$6('flow', state.flowing);
+  debug$7('flow', state.flowing);
   while (state.flowing && stream.read() !== null) {}
 }
 
@@ -5683,7 +5683,7 @@ Readable.prototype.wrap = function (stream) {
 
   var self = this;
   stream.on('end', function () {
-    debug$6('wrapped end');
+    debug$7('wrapped end');
     if (state.decoder && !state.ended) {
       var chunk = state.decoder.end();
       if (chunk && chunk.length) self.push(chunk);
@@ -5693,7 +5693,7 @@ Readable.prototype.wrap = function (stream) {
   });
 
   stream.on('data', function (chunk) {
-    debug$6('wrapped data');
+    debug$7('wrapped data');
     if (state.decoder) chunk = state.decoder.write(chunk);
 
     // don't skip over falsy values in objectMode
@@ -5727,7 +5727,7 @@ Readable.prototype.wrap = function (stream) {
   // when we try to consume some more bytes, simply unpause the
   // underlying stream.
   self._read = function (n) {
-    debug$6('wrapped _read', n);
+    debug$7('wrapped _read', n);
     if (paused) {
       paused = false;
       stream.resume();
@@ -9198,18 +9198,30 @@ const excludeHeaders = (headers, headersToExclude) => {
     }
     return Object.fromEntries(Object.entries(headers).filter(([key]) => !headersToExclude.includes(key)));
 };
+const DEFAULT_ICAL_EXTENSION = '.ics';
+const defaultIcsFilter = (url) => Boolean(url === null || url === void 0 ? void 0 : url.includes(DEFAULT_ICAL_EXTENSION));
+const validateISO8601TimeRange = (start, end) => {
+    const ISO_8601 = /^\d{4}(-\d\d(-\d\d(T\d\d:\d\d(:\d\d)?(\.\d+)?(([+-]\d\d:\d\d)|Z)?)?)?)?$/i;
+    const ISO_8601_FULL = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?(([+-]\d\d:\d\d)|Z)?$/i;
+    if ((!ISO_8601.test(start) || !ISO_8601.test(end)) &&
+        (!ISO_8601_FULL.test(start) || !ISO_8601_FULL.test(end))) {
+        throw new Error('invalid timeRange format, not in ISO8601');
+    }
+};
 
 var requestHelpers = /*#__PURE__*/Object.freeze({
 	__proto__: null,
 	cleanupFalsy: cleanupFalsy,
 	conditionalParam: conditionalParam,
+	defaultIcsFilter: defaultIcsFilter,
 	excludeHeaders: excludeHeaders,
 	getDAVAttribute: getDAVAttribute,
 	urlContains: urlContains,
-	urlEquals: urlEquals
+	urlEquals: urlEquals,
+	validateISO8601TimeRange: validateISO8601TimeRange
 });
 
-const debug$5 = getLogger('tsdav:request');
+const debug$6 = getLogger('tsdav:request');
 const davRequest = async (params) => {
     var _a;
     const { url, init, convertIncoming = true, parseOutgoing = true, fetchOptions = {} } = params;
@@ -9299,7 +9311,7 @@ const davRequest = async (params) => {
                 }
             }
             catch (e) {
-                debug$5(e.stack);
+                debug$6(e.stack);
             }
         },
         // remove namespace & camelCase
@@ -9414,7 +9426,7 @@ function hasFields(obj, fields) {
 const findMissingFieldNames = (obj, fields) => fields.reduce((prev, curr) => (obj[curr] ? prev : `${prev.length ? `${prev},` : ''}${curr.toString()}`), '');
 
 /* eslint-disable no-underscore-dangle */
-const debug$4 = getLogger('tsdav:collection');
+const debug$5 = getLogger('tsdav:collection');
 const collectionQuery = async (params) => {
     const { url, body, depth, defaultNamespace = DAVNamespaceShort.DAV, headers, headersToExclude, fetchOptions = {} } = params;
     const queryResults = await davRequest({
@@ -9528,7 +9540,7 @@ const smartCollectionSync = async (params) => {
         throw new Error(`account must have ${findMissingFieldNames(account, requiredFields)} before smartCollectionSync`);
     }
     const syncMethod = method !== null && method !== void 0 ? method : (((_a = collection.reports) === null || _a === void 0 ? void 0 : _a.includes('syncCollection')) ? 'webdav' : 'basic');
-    debug$4(`smart collection sync with type ${account.accountType} and method ${syncMethod}`);
+    debug$5(`smart collection sync with type ${account.accountType} and method ${syncMethod}`);
     if (syncMethod === 'webdav') {
         const result = await syncCollection({
             url: collection.url,
@@ -9663,7 +9675,7 @@ var collection = /*#__PURE__*/Object.freeze({
 });
 
 /* eslint-disable no-underscore-dangle */
-const debug$3 = getLogger('tsdav:addressBook');
+const debug$4 = getLogger('tsdav:addressBook');
 const addressBookQuery = async (params) => {
     const { url, props, filters, depth, headers, headersToExclude, fetchOptions = {} } = params;
     return collectionQuery({
@@ -9730,7 +9742,7 @@ const fetchAddressBooks = async (params) => {
         .map((rs) => {
         var _a, _b, _c, _d, _e, _f, _g, _h, _j;
         const displayName = (_c = (_b = (_a = rs.props) === null || _a === void 0 ? void 0 : _a.displayname) === null || _b === void 0 ? void 0 : _b._cdata) !== null && _c !== void 0 ? _c : (_d = rs.props) === null || _d === void 0 ? void 0 : _d.displayname;
-        debug$3(`Found address book named ${typeof displayName === 'string' ? displayName : ''},
+        debug$4(`Found address book named ${typeof displayName === 'string' ? displayName : ''},
              props: ${JSON.stringify(rs.props)}`);
         return {
             url: new URL((_e = rs.href) !== null && _e !== void 0 ? _e : '', (_f = account.rootUrl) !== null && _f !== void 0 ? _f : '').href,
@@ -9751,7 +9763,7 @@ const fetchAddressBooks = async (params) => {
 };
 const fetchVCards = async (params) => {
     const { addressBook, headers, objectUrls, headersToExclude, urlFilter = (url) => url, useMultiGet = true, fetchOptions = {}, } = params;
-    debug$3(`Fetching vcards from ${addressBook === null || addressBook === void 0 ? void 0 : addressBook.url}`);
+    debug$4(`Fetching vcards from ${addressBook === null || addressBook === void 0 ? void 0 : addressBook.url}`);
     const requiredFields = ['url'];
     if (!addressBook || !hasFields(addressBook, requiredFields)) {
         if (!addressBook) {
@@ -9856,7 +9868,7 @@ var addressBook = /*#__PURE__*/Object.freeze({
 });
 
 /* eslint-disable no-underscore-dangle */
-const debug$2 = getLogger('tsdav:calendar');
+const debug$3 = getLogger('tsdav:calendar');
 const fetchCalendarUserAddresses = async (params) => {
     var _a, _b, _c;
     const { account, headers, headersToExclude, fetchOptions = {} } = params;
@@ -9864,7 +9876,7 @@ const fetchCalendarUserAddresses = async (params) => {
     if (!hasFields(account, requiredFields)) {
         throw new Error(`account must have ${findMissingFieldNames(account, requiredFields)} before fetchUserAddresses`);
     }
-    debug$2(`Fetch user addresses from ${account.principalUrl}`);
+    debug$3(`Fetch user addresses from ${account.principalUrl}`);
     const responses = await propfind({
         url: account.principalUrl,
         props: { [`${DAVNamespaceShort.CALDAV}:calendar-user-address-set`]: {} },
@@ -9877,7 +9889,7 @@ const fetchCalendarUserAddresses = async (params) => {
         throw new Error('cannot find calendarUserAddresses');
     }
     const addresses = ((_c = (_b = (_a = matched === null || matched === void 0 ? void 0 : matched.props) === null || _a === void 0 ? void 0 : _a.calendarUserAddressSet) === null || _b === void 0 ? void 0 : _b.href) === null || _c === void 0 ? void 0 : _c.filter(Boolean)) || [];
-    debug$2(`Fetched calendar user addresses ${addresses}`);
+    debug$3(`Fetched calendar user addresses ${addresses}`);
     return addresses;
 };
 const calendarQuery = async (params) => {
@@ -10011,17 +10023,11 @@ const fetchCalendars = async (params) => {
     })));
 };
 const fetchCalendarObjects = async (params) => {
-    const { calendar, objectUrls, filters: customFilters, timeRange, headers, expand, urlFilter = (url) => Boolean(url === null || url === void 0 ? void 0 : url.includes('.ics')), useMultiGet = true, headersToExclude, fetchOptions = {}, } = params;
+    const { calendar, objectUrls, filters: customFilters, timeRange, headers, expand, urlFilter = defaultIcsFilter, useMultiGet = true, headersToExclude, fetchOptions = {}, } = params;
     if (timeRange) {
-        // validate timeRange
-        const ISO_8601 = /^\d{4}(-\d\d(-\d\d(T\d\d:\d\d(:\d\d)?(\.\d+)?(([+-]\d\d:\d\d)|Z)?)?)?)?$/i;
-        const ISO_8601_FULL = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?(([+-]\d\d:\d\d)|Z)?$/i;
-        if ((!ISO_8601.test(timeRange.start) || !ISO_8601.test(timeRange.end)) &&
-            (!ISO_8601_FULL.test(timeRange.start) || !ISO_8601_FULL.test(timeRange.end))) {
-            throw new Error('invalid timeRange format, not in ISO8601');
-        }
+        validateISO8601TimeRange(timeRange.start, timeRange.end);
     }
-    debug$2(`Fetching calendar objects from ${calendar === null || calendar === void 0 ? void 0 : calendar.url}`);
+    debug$3(`Fetching calendar objects from ${calendar === null || calendar === void 0 ? void 0 : calendar.url}`);
     const requiredFields = ['url'];
     if (!calendar || !hasFields(calendar, requiredFields)) {
         if (!calendar) {
@@ -10216,7 +10222,7 @@ const syncCalendars = async (params) => {
     });
     // no existing url
     const created = remoteCalendars.filter((rc) => localCalendars.every((lc) => !urlContains(lc.url, rc.url)));
-    debug$2(`new calendars: ${created.map((cc) => cc.displayName)}`);
+    debug$3(`new calendars: ${created.map((cc) => cc.displayName)}`);
     // have same url, but syncToken/ctag different
     const updated = localCalendars.reduce((prev, curr) => {
         const found = remoteCalendars.find((rc) => urlContains(rc.url, curr.url));
@@ -10227,7 +10233,7 @@ const syncCalendars = async (params) => {
         }
         return prev;
     }, []);
-    debug$2(`updated calendars: ${updated.map((cc) => cc.displayName)}`);
+    debug$3(`updated calendars: ${updated.map((cc) => cc.displayName)}`);
     const updatedWithObjects = await Promise.all(updated.map(async (u) => {
         const result = await smartCollectionSync({
             collection: { ...u, objectMultiGet: calendarMultiGet },
@@ -10240,7 +10246,7 @@ const syncCalendars = async (params) => {
     }));
     // does not present in remote
     const deleted = localCalendars.filter((cal) => remoteCalendars.every((rc) => !urlContains(rc.url, cal.url)));
-    debug$2(`deleted calendars: ${deleted.map((cc) => cc.displayName)}`);
+    debug$3(`deleted calendars: ${deleted.map((cc) => cc.displayName)}`);
     const unchanged = localCalendars.filter((cal) => remoteCalendars.some((rc) => urlContains(rc.url, cal.url) &&
         ((rc.syncToken && `${rc.syncToken}` !== `${cal.syncToken}`) ||
             (rc.ctag && `${rc.ctag}` !== `${cal.ctag}`))));
@@ -10256,13 +10262,7 @@ const syncCalendars = async (params) => {
 const freeBusyQuery = async (params) => {
     const { url, timeRange, depth, headers, headersToExclude, fetchOptions = {} } = params;
     if (timeRange) {
-        // validate timeRange
-        const ISO_8601 = /^\d{4}(-\d\d(-\d\d(T\d\d:\d\d(:\d\d)?(\.\d+)?(([+-]\d\d:\d\d)|Z)?)?)?)?$/i;
-        const ISO_8601_FULL = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?(([+-]\d\d:\d\d)|Z)?$/i;
-        if ((!ISO_8601.test(timeRange.start) || !ISO_8601.test(timeRange.end)) &&
-            (!ISO_8601_FULL.test(timeRange.start) || !ISO_8601_FULL.test(timeRange.end))) {
-            throw new Error('invalid timeRange format, not in ISO8601');
-        }
+        validateISO8601TimeRange(timeRange.start, timeRange.end);
     }
     else {
         throw new Error('timeRange is required');
@@ -10303,10 +10303,10 @@ var calendar = /*#__PURE__*/Object.freeze({
 	updateCalendarObject: updateCalendarObject
 });
 
-const debug$1 = getLogger('tsdav:account');
+const debug$2 = getLogger('tsdav:account');
 const serviceDiscovery = async (params) => {
     var _a, _b;
-    debug$1('Service discovery...');
+    debug$2('Service discovery...');
     const { account, headers, headersToExclude, fetchOptions = {} } = params;
     const endpoint = new URL(account.serverUrl);
     const uri = new URL(`/.well-known/${account.accountType}`, endpoint);
@@ -10322,7 +10322,7 @@ const serviceDiscovery = async (params) => {
             // http redirect.
             const location = response.headers.get('Location');
             if (typeof location === 'string' && location.length) {
-                debug$1(`Service discovery redirected to ${location}`);
+                debug$2(`Service discovery redirected to ${location}`);
                 const serviceURL = new URL(location, endpoint);
                 if (serviceURL.hostname === uri.hostname && uri.port && !serviceURL.port) {
                     serviceURL.port = uri.port;
@@ -10333,7 +10333,7 @@ const serviceDiscovery = async (params) => {
         }
     }
     catch (err) {
-        debug$1(`Service discovery failed: ${err.stack}`);
+        debug$2(`Service discovery failed: ${err.stack}`);
     }
     return endpoint.href;
 };
@@ -10344,7 +10344,7 @@ const fetchPrincipalUrl = async (params) => {
     if (!hasFields(account, requiredFields)) {
         throw new Error(`account must have ${findMissingFieldNames(account, requiredFields)} before fetchPrincipalUrl`);
     }
-    debug$1(`Fetching principal url from path ${account.rootUrl}`);
+    debug$2(`Fetching principal url from path ${account.rootUrl}`);
     const [response] = await propfind({
         url: account.rootUrl,
         props: {
@@ -10355,12 +10355,12 @@ const fetchPrincipalUrl = async (params) => {
         fetchOptions,
     });
     if (!response.ok) {
-        debug$1(`Fetch principal url failed: ${response.statusText}`);
+        debug$2(`Fetch principal url failed: ${response.statusText}`);
         if (response.status === 401) {
             throw new Error('Invalid credentials');
         }
     }
-    debug$1(`Fetched principal url ${(_b = (_a = response.props) === null || _a === void 0 ? void 0 : _a.currentUserPrincipal) === null || _b === void 0 ? void 0 : _b.href}`);
+    debug$2(`Fetched principal url ${(_b = (_a = response.props) === null || _a === void 0 ? void 0 : _a.currentUserPrincipal) === null || _b === void 0 ? void 0 : _b.href}`);
     return new URL((_e = (_d = (_c = response.props) === null || _c === void 0 ? void 0 : _c.currentUserPrincipal) === null || _d === void 0 ? void 0 : _d.href) !== null && _e !== void 0 ? _e : '', account.rootUrl).href;
 };
 const fetchHomeUrl = async (params) => {
@@ -10370,7 +10370,7 @@ const fetchHomeUrl = async (params) => {
     if (!hasFields(account, requiredFields)) {
         throw new Error(`account must have ${findMissingFieldNames(account, requiredFields)} before fetchHomeUrl`);
     }
-    debug$1(`Fetch home url from ${account.principalUrl}`);
+    debug$2(`Fetch home url from ${account.principalUrl}`);
     const responses = await propfind({
         url: account.principalUrl,
         props: account.accountType === 'caldav'
@@ -10382,13 +10382,13 @@ const fetchHomeUrl = async (params) => {
     });
     const matched = responses.find((r) => urlContains(account.principalUrl, r.href));
     if (!matched || !matched.ok) {
-        debug$1(`Fetch home url failed with status ${matched === null || matched === void 0 ? void 0 : matched.statusText} and error ${JSON.stringify(responses.map((r) => r.error))}`);
+        debug$2(`Fetch home url failed with status ${matched === null || matched === void 0 ? void 0 : matched.statusText} and error ${JSON.stringify(responses.map((r) => r.error))}`);
         throw new Error('cannot find homeUrl');
     }
     const result = new URL(account.accountType === 'caldav'
         ? (_a = matched === null || matched === void 0 ? void 0 : matched.props) === null || _a === void 0 ? void 0 : _a.calendarHomeSet.href
         : (_b = matched === null || matched === void 0 ? void 0 : matched.props) === null || _b === void 0 ? void 0 : _b.addressbookHomeSet.href, account.rootUrl).href;
-    debug$1(`Fetched home url ${result}`);
+    debug$2(`Fetched home url ${result}`);
     return result;
 };
 const createAccount = async (params) => {
@@ -10457,6 +10457,291 @@ var account = /*#__PURE__*/Object.freeze({
 	fetchHomeUrl: fetchHomeUrl,
 	fetchPrincipalUrl: fetchPrincipalUrl,
 	serviceDiscovery: serviceDiscovery
+});
+
+/* eslint-disable no-underscore-dangle */
+const debug$1 = getLogger('tsdav:todo');
+/**
+ * Helper function to build expand property for calendar-data
+ */
+const buildExpandProp = (timeRange) => ({
+    [`${DAVNamespaceShort.CALDAV}:expand`]: {
+        _attributes: {
+            start: `${new Date(timeRange.start).toISOString().slice(0, 19).replace(/[-:.]/g, '')}Z`,
+            end: `${new Date(timeRange.end).toISOString().slice(0, 19).replace(/[-:.]/g, '')}Z`,
+        },
+    },
+});
+/**
+ * Query todos using CalDAV REPORT calendar-query
+ *
+ * @param params.url - Calendar URL to query
+ * @param params.props - Properties to request
+ * @param params.filters - Optional CalDAV filters
+ * @param params.timezone - Optional timezone
+ * @param params.depth - Depth header value
+ * @param params.headers - Request headers
+ * @param params.headersToExclude - Headers to exclude
+ * @param params.fetchOptions - Fetch options
+ * @returns Array of DAV responses
+ */
+const todoQuery = async (params) => {
+    const { url, props, filters, timezone, depth, headers, headersToExclude, fetchOptions = {}, } = params;
+    return collectionQuery({
+        url,
+        body: {
+            'calendar-query': cleanupFalsy({
+                _attributes: getDAVAttribute([
+                    DAVNamespace.CALDAV,
+                    DAVNamespace.CALENDAR_SERVER,
+                    DAVNamespace.CALDAV_APPLE,
+                    DAVNamespace.DAV,
+                ]),
+                [`${DAVNamespaceShort.DAV}:prop`]: props,
+                filter: filters,
+                timezone,
+            }),
+        },
+        defaultNamespace: DAVNamespaceShort.CALDAV,
+        depth,
+        headers: excludeHeaders(headers, headersToExclude),
+        fetchOptions,
+    });
+};
+/**
+ * Fetch multiple todos by URL using CalDAV calendar-multiget
+ *
+ * @param params.url - Calendar URL
+ * @param params.props - Properties to request
+ * @param params.objectUrls - Array of todo object URLs to fetch
+ * @param params.timezone - Optional timezone
+ * @param params.depth - Depth header value
+ * @param params.filters - Optional CalDAV filters
+ * @param params.headers - Request headers
+ * @param params.headersToExclude - Headers to exclude
+ * @param params.fetchOptions - Fetch options
+ * @returns Array of DAV responses
+ */
+const todoMultiGet = async (params) => {
+    const { url, props, objectUrls, filters, timezone, depth, headers, headersToExclude, fetchOptions = {}, } = params;
+    return collectionQuery({
+        url,
+        body: {
+            'calendar-multiget': cleanupFalsy({
+                _attributes: getDAVAttribute([DAVNamespace.DAV, DAVNamespace.CALDAV]),
+                [`${DAVNamespaceShort.DAV}:prop`]: props,
+                [`${DAVNamespaceShort.DAV}:href`]: objectUrls,
+                filter: filters,
+                timezone,
+            }),
+        },
+        defaultNamespace: DAVNamespaceShort.CALDAV,
+        depth,
+        headers: excludeHeaders(headers, headersToExclude),
+        fetchOptions,
+    });
+};
+/**
+ * Fetch VTODO objects from a CalDAV calendar with optional filtering
+ *
+ * @param params.calendar - Calendar to fetch todos from
+ * @param params.objectUrls - Optional array of specific todo URLs to fetch
+ * @param params.filters - Optional custom CalDAV filters
+ * @param params.timeRange - Optional time range filter in ISO8601 format
+ * @param params.expand - Whether to expand recurring todos
+ * @param params.urlFilter - Custom filter function for todo object URLs
+ * @param params.headers - Request headers
+ * @param params.headersToExclude - Headers to exclude
+ * @param params.useMultiGet - Whether to use multiget (default: true)
+ * @param params.fetchOptions - Fetch options
+ * @returns Array of todo objects with url, etag, and iCalendar data
+ * @throws Error if calendar URL is missing or timeRange format is invalid
+ */
+const fetchTodos = async (params) => {
+    const { calendar, objectUrls, filters: customFilters, timeRange, headers, expand, urlFilter = defaultIcsFilter, useMultiGet = true, headersToExclude, fetchOptions = {}, } = params;
+    if (timeRange) {
+        validateISO8601TimeRange(timeRange.start, timeRange.end);
+    }
+    debug$1(`Fetching todo objects from ${calendar === null || calendar === void 0 ? void 0 : calendar.url}`);
+    const requiredFields = ['url'];
+    if (!calendar || !hasFields(calendar, requiredFields)) {
+        if (!calendar) {
+            throw new Error('cannot fetchTodos for undefined calendar');
+        }
+        throw new Error(`calendar must have ${findMissingFieldNames(calendar, requiredFields)} before fetchTodos`);
+    }
+    // Build CalDAV filter for VTODO components
+    // Structure: VCALENDAR -> VTODO -> optional time-range
+    const filters = customFilters !== null && customFilters !== void 0 ? customFilters : [
+        {
+            'comp-filter': {
+                _attributes: {
+                    name: 'VCALENDAR',
+                },
+                'comp-filter': {
+                    _attributes: {
+                        name: 'VTODO',
+                    },
+                    ...(timeRange
+                        ? {
+                            'time-range': {
+                                _attributes: {
+                                    start: `${new Date(timeRange.start)
+                                        .toISOString()
+                                        .slice(0, 19)
+                                        .replace(/[-:.]/g, '')}Z`,
+                                    end: `${new Date(timeRange.end)
+                                        .toISOString()
+                                        .slice(0, 19)
+                                        .replace(/[-:.]/g, '')}Z`,
+                                },
+                            },
+                        }
+                        : {}),
+                },
+            },
+        },
+    ];
+    const todoObjectUrls = (objectUrls !== null && objectUrls !== void 0 ? objectUrls : 
+    // fetch all todo objects of the calendar
+    (await todoQuery({
+        url: calendar.url,
+        props: {
+            [`${DAVNamespaceShort.DAV}:getetag`]: {
+                ...(expand && timeRange ? buildExpandProp(timeRange) : {}),
+            },
+        },
+        filters,
+        depth: '1',
+        headers: excludeHeaders(headers, headersToExclude),
+        fetchOptions,
+    })).map((res) => { var _a; return (_a = res.href) !== null && _a !== void 0 ? _a : ''; }))
+        .map((url) => (url.startsWith('http') || !url ? url : new URL(url, calendar.url).href))
+        .filter(urlFilter)
+        .map((url) => new URL(url).pathname);
+    let todoObjectResults = [];
+    if (todoObjectUrls.length > 0) {
+        if (!useMultiGet || expand) {
+            todoObjectResults = await todoQuery({
+                url: calendar.url,
+                props: {
+                    [`${DAVNamespaceShort.DAV}:getetag`]: {},
+                    [`${DAVNamespaceShort.CALDAV}:calendar-data`]: {
+                        ...(expand && timeRange ? buildExpandProp(timeRange) : {}),
+                    },
+                },
+                filters,
+                depth: '1',
+                headers: excludeHeaders(headers, headersToExclude),
+                fetchOptions,
+            });
+        }
+        else {
+            todoObjectResults = await todoMultiGet({
+                url: calendar.url,
+                props: {
+                    [`${DAVNamespaceShort.DAV}:getetag`]: {},
+                    [`${DAVNamespaceShort.CALDAV}:calendar-data`]: {
+                        ...(expand && timeRange ? buildExpandProp(timeRange) : {}),
+                    },
+                },
+                objectUrls: todoObjectUrls,
+                depth: '1',
+                headers: excludeHeaders(headers, headersToExclude),
+                fetchOptions,
+            });
+        }
+    }
+    return todoObjectResults.map((res) => {
+        var _a, _b, _c, _d, _e, _f;
+        return ({
+            url: new URL((_a = res.href) !== null && _a !== void 0 ? _a : '', calendar.url).href,
+            etag: `${(_b = res.props) === null || _b === void 0 ? void 0 : _b.getetag}`,
+            data: (_e = (_d = (_c = res.props) === null || _c === void 0 ? void 0 : _c.calendarData) === null || _d === void 0 ? void 0 : _d._cdata) !== null && _e !== void 0 ? _e : (_f = res.props) === null || _f === void 0 ? void 0 : _f.calendarData,
+        });
+    });
+};
+/**
+ * Create a new VTODO object in a CalDAV calendar
+ *
+ * @param params.calendar - Calendar to create the todo in
+ * @param params.iCalString - iCalendar data string (must contain UID)
+ * @param params.filename - Filename for the todo object
+ * @param params.headers - Request headers
+ * @param params.headersToExclude - Headers to exclude
+ * @param params.fetchOptions - Fetch options
+ * @returns Response from the server
+ * @throws Error if iCalString does not contain a UID
+ */
+const createTodo = async (params) => {
+    const { calendar, iCalString, filename, headers, headersToExclude, fetchOptions = {} } = params;
+    if (!iCalString.includes('UID:')) {
+        throw new Error('iCalString must contain a UID');
+    }
+    return createObject({
+        url: new URL(filename, calendar.url).href,
+        data: iCalString,
+        headers: excludeHeaders({
+            'content-type': 'text/calendar; charset=utf-8',
+            'If-None-Match': '*',
+            ...headers,
+        }, headersToExclude),
+        fetchOptions,
+    });
+};
+/**
+ * Update an existing VTODO object in a CalDAV calendar
+ *
+ * @param params.calendarObject - Todo object to update (must have etag)
+ * @param params.headers - Request headers
+ * @param params.headersToExclude - Headers to exclude
+ * @param params.fetchOptions - Fetch options
+ * @returns Response from the server
+ * @throws Error if calendarObject does not have an etag
+ */
+const updateTodo = async (params) => {
+    const { calendarObject, headers, headersToExclude, fetchOptions = {} } = params;
+    if (!calendarObject.etag) {
+        throw new Error('calendarObject must have etag for update - fetch todo first');
+    }
+    return updateObject({
+        url: calendarObject.url,
+        data: calendarObject.data,
+        etag: calendarObject.etag,
+        headers: excludeHeaders({
+            'content-type': 'text/calendar; charset=utf-8',
+            ...headers,
+        }, headersToExclude),
+        fetchOptions,
+    });
+};
+/**
+ * Delete a VTODO object from a CalDAV calendar
+ *
+ * @param params.calendarObject - Todo object to delete
+ * @param params.headers - Request headers
+ * @param params.headersToExclude - Headers to exclude
+ * @param params.fetchOptions - Fetch options
+ * @returns Response from the server
+ */
+const deleteTodo = async (params) => {
+    const { calendarObject, headers, headersToExclude, fetchOptions = {} } = params;
+    return deleteObject({
+        url: calendarObject.url,
+        etag: calendarObject.etag,
+        headers: excludeHeaders(headers, headersToExclude),
+        fetchOptions,
+    });
+};
+
+var todo = /*#__PURE__*/Object.freeze({
+	__proto__: null,
+	createTodo: createTodo,
+	deleteTodo: deleteTodo,
+	fetchTodos: fetchTodos,
+	todoMultiGet: todoMultiGet,
+	todoQuery: todoQuery,
+	updateTodo: updateTodo
 });
 
 var base64$1 = {exports: {}};
@@ -10860,6 +11145,13 @@ const createDAVClient = async (params) => {
     const createVCard$1 = defaultParam(createVCard, { headers: authHeaders });
     const updateVCard$1 = defaultParam(updateVCard, { headers: authHeaders });
     const deleteVCard$1 = defaultParam(deleteVCard, { headers: authHeaders });
+    // todo
+    const todoQuery$1 = defaultParam(todoQuery, { headers: authHeaders });
+    const todoMultiGet$1 = defaultParam(todoMultiGet, { headers: authHeaders });
+    const fetchTodos$1 = defaultParam(fetchTodos, { headers: authHeaders });
+    const createTodo$1 = defaultParam(createTodo, { headers: authHeaders });
+    const updateTodo$1 = defaultParam(updateTodo, { headers: authHeaders });
+    const deleteTodo$1 = defaultParam(deleteTodo, { headers: authHeaders });
     return {
         davRequest: davRequest$1,
         propfind: propfind$1,
@@ -10890,6 +11182,12 @@ const createDAVClient = async (params) => {
         createVCard: createVCard$1,
         updateVCard: updateVCard$1,
         deleteVCard: deleteVCard$1,
+        todoQuery: todoQuery$1,
+        todoMultiGet: todoMultiGet$1,
+        fetchTodos: fetchTodos$1,
+        createTodo: createTodo$1,
+        updateTodo: updateTodo$1,
+        deleteTodo: deleteTodo$1,
     };
 };
 class DAVClient {
@@ -11060,6 +11358,24 @@ class DAVClient {
     async deleteVCard(...params) {
         return defaultParam(deleteVCard, { headers: this.authHeaders, fetchOptions: this.fetchOptions })(params[0]);
     }
+    async todoQuery(...params) {
+        return defaultParam(todoQuery, { headers: this.authHeaders, fetchOptions: this.fetchOptions })(params[0]);
+    }
+    async todoMultiGet(...params) {
+        return defaultParam(todoMultiGet, { headers: this.authHeaders, fetchOptions: this.fetchOptions })(params[0]);
+    }
+    async fetchTodos(...params) {
+        return defaultParam(fetchTodos, { headers: this.authHeaders, fetchOptions: this.fetchOptions })(params[0]);
+    }
+    async createTodo(...params) {
+        return defaultParam(createTodo, { headers: this.authHeaders, fetchOptions: this.fetchOptions })(params[0]);
+    }
+    async updateTodo(...params) {
+        return defaultParam(updateTodo, { headers: this.authHeaders, fetchOptions: this.fetchOptions })(params[0]);
+    }
+    async deleteTodo(...params) {
+        return defaultParam(deleteTodo, { headers: this.authHeaders, fetchOptions: this.fetchOptions })(params[0]);
+    }
 }
 
 var client = /*#__PURE__*/Object.freeze({
@@ -11078,8 +11394,9 @@ var index = {
     ...account,
     ...addressBook,
     ...calendar,
+    ...todo,
     ...authHelpers,
     ...requestHelpers,
 };
 
-export { DAVAttributeMap, DAVClient, DAVNamespace, DAVNamespaceShort, addressBookMultiGet, addressBookQuery, calendarMultiGet, calendarQuery, cleanupFalsy, collectionQuery, createAccount, createCalendarObject, createDAVClient, createObject, createVCard, davRequest, index as default, deleteCalendarObject, deleteObject, deleteVCard, fetchAddressBooks, fetchCalendarObjects, fetchCalendarUserAddresses, fetchCalendars, fetchOauthTokens, fetchVCards, freeBusyQuery, getBasicAuthHeaders, getDAVAttribute, getOauthHeaders, isCollectionDirty, makeCalendar, propfind, refreshAccessToken, smartCollectionSync, supportedReportSet, syncCalendars, syncCollection, updateCalendarObject, updateObject, updateVCard, urlContains, urlEquals };
+export { DAVAttributeMap, DAVClient, DAVNamespace, DAVNamespaceShort, addressBookMultiGet, addressBookQuery, calendarMultiGet, calendarQuery, cleanupFalsy, collectionQuery, createAccount, createCalendarObject, createDAVClient, createObject, createTodo, createVCard, davRequest, index as default, deleteCalendarObject, deleteObject, deleteTodo, deleteVCard, fetchAddressBooks, fetchCalendarObjects, fetchCalendarUserAddresses, fetchCalendars, fetchOauthTokens, fetchTodos, fetchVCards, freeBusyQuery, getBasicAuthHeaders, getDAVAttribute, getOauthHeaders, isCollectionDirty, makeCalendar, propfind, refreshAccessToken, smartCollectionSync, supportedReportSet, syncCalendars, syncCollection, todoMultiGet, todoQuery, updateCalendarObject, updateObject, updateTodo, updateVCard, urlContains, urlEquals };
