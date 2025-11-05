@@ -5,11 +5,11 @@
 
 import * as fs from 'fs';
 import chalk from 'chalk';
-import { MigrationConfig } from '../../types/config';
+import { MigrationConfig, MigrationType } from '../../types/config';
 import { ConfigValidator } from '../../utils/validation';
 import { ProviderFactory } from '../../core/ProviderFactory';
 
-export async function validateCommand(options: { config: string }): Promise<void> {
+export async function validateCommand(options: { config: string; type?: MigrationType }): Promise<void> {
   console.log(chalk.blue('=== Validating Migration Configuration ===\n'));
 
   try {
@@ -20,6 +20,16 @@ export async function validateCommand(options: { config: string }): Promise<void
 
     const configData = fs.readFileSync(options.config, 'utf-8');
     const config: MigrationConfig = JSON.parse(configData);
+
+    // Apply type option
+    if (options.type) {
+      config.migrationType = options.type;
+    } else if (!config.migrationType) {
+      config.migrationType = 'calendar';
+    }
+
+    const migrationType = config.migrationType;
+    const collectionType = migrationType === 'calendar' ? 'calendars' : 'addressbooks';
 
     // Validate config schema
     console.log(chalk.cyan('Step 1: Validating config schema...'));
@@ -47,48 +57,53 @@ export async function validateCommand(options: { config: string }): Promise<void
     // Test source authentication
     console.log(chalk.cyan('Source provider:'));
     const sourceClient = await ProviderFactory.createClient(config.source);
-    const sourceCalendars = await sourceClient.fetchCalendars();
+    const sourceCollections = migrationType === 'calendar'
+      ? await sourceClient.fetchCalendars()
+      : await sourceClient.fetchAddressBooks();
     console.log(
       chalk.green(
-        `✓ Successfully authenticated with ${config.source.provider} (found ${sourceCalendars.length} calendars)`
+        `✓ Successfully authenticated with ${config.source.provider} (found ${sourceCollections.length} ${collectionType})`
       )
     );
 
-    if (sourceCalendars.length > 0) {
-      console.log(chalk.gray('  Calendars:'));
-      sourceCalendars.slice(0, 5).forEach((cal) => {
-        console.log(chalk.gray(`    - ${cal.displayName}`));
+    if (sourceCollections.length > 0) {
+      console.log(chalk.gray(`  ${collectionType.charAt(0).toUpperCase() + collectionType.slice(1)}:`));
+      sourceCollections.slice(0, 5).forEach((col: any) => {
+        console.log(chalk.gray(`    - ${col.displayName || col.url}`));
       });
-      if (sourceCalendars.length > 5) {
-        console.log(chalk.gray(`    ... and ${sourceCalendars.length - 5} more`));
+      if (sourceCollections.length > 5) {
+        console.log(chalk.gray(`    ... and ${sourceCollections.length - 5} more`));
       }
     }
 
     // Test target authentication
     console.log(chalk.cyan('\nTarget provider:'));
     const targetClient = await ProviderFactory.createClient(config.target);
-    const targetCalendars = await targetClient.fetchCalendars();
+    const targetCollections = migrationType === 'calendar'
+      ? await targetClient.fetchCalendars()
+      : await targetClient.fetchAddressBooks();
     console.log(
       chalk.green(
-        `✓ Successfully authenticated with ${config.target.provider} (found ${targetCalendars.length} calendars)`
+        `✓ Successfully authenticated with ${config.target.provider} (found ${targetCollections.length} ${collectionType})`
       )
     );
 
-    if (targetCalendars.length > 0) {
-      console.log(chalk.gray('  Calendars:'));
-      targetCalendars.slice(0, 5).forEach((cal) => {
-        console.log(chalk.gray(`    - ${cal.displayName}`));
+    if (targetCollections.length > 0) {
+      console.log(chalk.gray(`  ${collectionType.charAt(0).toUpperCase() + collectionType.slice(1)}:`));
+      targetCollections.slice(0, 5).forEach((col: any) => {
+        console.log(chalk.gray(`    - ${col.displayName || col.url}`));
       });
-      if (targetCalendars.length > 5) {
-        console.log(chalk.gray(`    ... and ${targetCalendars.length - 5} more`));
+      if (targetCollections.length > 5) {
+        console.log(chalk.gray(`    ... and ${targetCollections.length - 5} more`));
       }
     }
 
     // Summary
     console.log(chalk.green('\n✓ Configuration is valid and authentication successful!'));
     console.log(chalk.cyan('\nNext Steps:'));
-    console.log(`  Preview: dav-migrate preview --config ${options.config}`);
-    console.log(`  Run: dav-migrate run --config ${options.config}`);
+    const typeFlag = migrationType === 'contacts' ? ' --type contacts' : '';
+    console.log(`  Preview: dav-migrate preview --config ${options.config}${typeFlag}`);
+    console.log(`  Run: dav-migrate run --config ${options.config}${typeFlag}`);
   } catch (error) {
     console.error(chalk.red(`\n✗ Validation failed: ${(error as Error).message}`));
     if (process.env.DEBUG) {

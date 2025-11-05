@@ -5,13 +5,14 @@
 
 import * as fs from 'fs';
 import chalk from 'chalk';
-import { MigrationConfig } from '../../types/config';
+import { MigrationConfig, MigrationType } from '../../types/config';
 import { ConfigValidator } from '../../utils/validation';
 import { StateManager } from '../../core/StateManager';
 import { MigrationEngine } from '../../core/MigrationEngine';
 
-export async function previewCommand(options: { config: string; state?: string }): Promise<void> {
-  console.log(chalk.blue('=== Migration Preview (Dry-Run) ===\n'));
+export async function previewCommand(options: { config: string; state?: string; type?: MigrationType }): Promise<void> {
+  const displayType = (options.type || 'calendar') === 'calendar' ? 'Calendar' : 'Contacts';
+  console.log(chalk.blue(`=== ${displayType} Migration Preview (Dry-Run) ===\n`));
 
   try {
     // Load config file
@@ -26,6 +27,13 @@ export async function previewCommand(options: { config: string; state?: string }
     const validator = new ConfigValidator();
     validator.validateOrThrow(configRaw);
     const config = configRaw as MigrationConfig;
+
+    // Apply type option
+    if (options.type) {
+      config.migrationType = options.type;
+    } else if (!config.migrationType) {
+      config.migrationType = 'calendar';
+    }
 
     // Enable dry-run mode
     config.options = {

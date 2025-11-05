@@ -1,11 +1,11 @@
 /**
  * Run Command
- * Execute calendar migration
+ * Execute DAV migration (calendar or contacts)
  */
 
 import * as fs from 'fs';
 import chalk from 'chalk';
-import { MigrationConfig } from '../../types/config';
+import { MigrationConfig, MigrationType } from '../../types/config';
 import { ConfigValidator } from '../../utils/validation';
 import { StateManager } from '../../core/StateManager';
 import { MigrationEngine } from '../../core/MigrationEngine';
@@ -15,8 +15,11 @@ export async function runCommand(options: {
   state: string;
   overwrite: boolean;
   interactive: boolean;
+  type?: MigrationType;
 }): Promise<void> {
-  console.log(chalk.blue('=== Starting Calendar Migration ===\n'));
+  const migrationType = options.type || 'calendar';
+  const displayType = migrationType === 'calendar' ? 'Calendar' : 'Contacts';
+  console.log(chalk.blue(`=== Starting ${displayType} Migration ===\n`));
 
   try {
     // Load config file
@@ -33,6 +36,12 @@ export async function runCommand(options: {
     const config = configRaw as MigrationConfig;
 
     // Apply CLI options
+    if (options.type) {
+      config.migrationType = options.type;
+    } else if (!config.migrationType) {
+      config.migrationType = 'calendar'; // Default to calendar for backwards compatibility
+    }
+
     config.options = {
       ...config.options,
       overwrite: options.overwrite || config.options?.overwrite || false,

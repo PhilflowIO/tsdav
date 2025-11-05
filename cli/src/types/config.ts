@@ -9,6 +9,16 @@
 export type ProviderType = 'google' | 'nextcloud' | 'baikal' | 'generic';
 
 /**
+ * Migration type (CalDAV or CardDAV)
+ */
+export type MigrationType = 'calendar' | 'contacts';
+
+/**
+ * Object type within collections
+ */
+export type ObjectType = 'VEVENT' | 'VTODO' | 'VCARD';
+
+/**
  * Authentication method types
  */
 export type AuthMethod = 'Basic' | 'Oauth';
@@ -51,6 +61,8 @@ export interface ProviderConfig {
  * Migration configuration
  */
 export interface MigrationConfig {
+  /** Migration type: calendar (CalDAV) or contacts (CardDAV) */
+  migrationType?: MigrationType; // Optional, defaults to 'calendar' for backwards compatibility
   source: ProviderConfig;
   target: ProviderConfig;
   options?: MigrationOptions;
@@ -104,6 +116,10 @@ export interface CalendarMigrationState {
   targetCalendarName: string;
   totalEvents: number;
   processedEvents: number;
+  /** Object type counts (VEVENT, VTODO, VCARD) */
+  objectCounts?: Record<ObjectType, number>;
+  /** User responses for interactive prompts (e.g., "migrateTasks": true) */
+  userResponses?: Record<string, boolean>;
   /** UIDs of successfully migrated events */
   migratedUIDs: string[];
   /** UIDs that were skipped (already existed on target) */
@@ -142,6 +158,11 @@ export interface MigrationSummary {
 export const MigrationConfigSchema = {
   type: 'object',
   properties: {
+    migrationType: {
+      type: 'string',
+      enum: ['calendar', 'contacts'],
+      default: 'calendar',
+    },
     source: {
       type: 'object',
       properties: {

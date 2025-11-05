@@ -1,10 +1,11 @@
 /**
  * UID Extraction Utility
- * Parses iCalendar data to extract UID field
+ * Parses iCalendar and vCard data to extract UID field
  * Critical for Google/ZOHO providers (require UID as filename)
  */
 
 import ICAL from 'ical.js';
+import { ObjectType } from '../types/config';
 
 export class UIDExtractor {
   /**
@@ -152,6 +153,112 @@ export class UIDExtractor {
     } catch (error) {
       return null;
     }
+  }
+
+  /**
+   * Extract UID from vCard data string
+   * @param vcardData - Raw vCard data (RFC 6350 format)
+   * @returns UID string or null if not found
+   */
+  static extractVCardUID(vcardData: string): string | null {
+    try {
+      // Parse vCard data using ical.js (supports both iCalendar and vCard)
+      const jcalData = ICAL.parse(vcardData);
+      const comp = new ICAL.Component(jcalData);
+
+      // Get VCARD component
+      if (comp.name !== 'vcard') {
+        console.warn('No VCARD found in data');
+        return null;
+      }
+
+      // Extract UID property
+      const uid = comp.getFirstPropertyValue('uid') as string;
+      if (!uid) {
+        console.warn('VCARD found but no UID property');
+        return null;
+      }
+
+      return uid;
+    } catch (error) {
+      console.error('Failed to parse vCard data:', error);
+      // Fallback to regex method
+      return this.extractVCardUIDRegex(vcardData);
+    }
+  }
+
+  /**
+   * Extract UID from vCard using fallback regex method
+   * @param vcardData - Raw vCard data
+   * @returns UID string or null if not found
+   */
+  static extractVCardUIDRegex(vcardData: string): string | null {
+    const uidMatch = vcardData.match(/^UID:(.+)$/m);
+    return uidMatch ? uidMatch[1].trim() : null;
+  }
+
+  /**
+   * Detect object type from raw data
+   * @param data - Raw data string (iCalendar or vCard)
+   * @returns Object type (VEVENT, VTODO, VCARD) or null if cannot detect
+   */
+  static detectObjectType(data: string): ObjectType | null {
+    try {
+      const jcalData = ICAL.parse(data);
+      const comp = new ICAL.Component(jcalData);
+
+      if (comp.name === 'vcard') {
+        return 'VCARD';
+      }
+
+      if (comp.name === 'vcalendar') {
+        const vevent = comp.getFirstSubcomponent('vevent');
+        if (vevent) return 'VEVENT';
+
+        const vtodo = comp.getFirstSubcomponent('vtodo');
+        if (vtodo) return 'VTODO';
+      }
+
+      return null;
+    } catch (error) {
+      // Fallback to regex detection
+      if (/BEGIN:VCARD/i.test(data)) return 'VCARD';
+      if (/BEGIN:VEVENT/i.test(data)) return 'VEVENT';
+      if (/BEGIN:VTODO/i.test(data)) return 'VTODO';
+      return null;
+    }
+  }
+
+  /**
+   * Extract UID based on detected object type (unified method)
+   * @param data - Raw data string (iCalendar or vCard)
+   * @returns UID string or null if not found
+   */
+  static extractUIDUnified(data: string): string | null {
+    const objectType = this.detectObjectType(data);
+
+    if (objectType === 'VCARD') {
+      return this.extractVCardUID(data);
+    }
+
+    // VEVENT or VTODO (both use iCalendar format)
+    return this.extractUID(data);
+  }
+
+  /**
+   * Extract UID based on detected object type (throws if not found)
+   * @param data - Raw data string (iCalendar or vCard)
+   * @returns UID string
+   * @throws Error if UID cannot be extracted
+   */
+  static extractUIDUnifiedOrThrow(data: string): string {
+    const uid = this.extractUIDUnified(data);
+
+    if (!uid) {
+      throw new Error('Failed to extract UID from data');
+    }
+
+    return uid;
   }
 
   /**

@@ -12,6 +12,7 @@ import {
   AuthMethod,
   OAuth2Credentials,
   BasicAuthCredentials,
+  MigrationType,
 } from '../../types/config';
 import { ProviderFactory } from '../../core/ProviderFactory';
 
@@ -19,32 +20,50 @@ export async function initCommand(options: { output: string }): Promise<void> {
   console.log(chalk.blue('=== DAV Migration Configuration Setup ===\n'));
 
   try {
+    // Migration type selection
+    console.log(chalk.cyan('Migration Type'));
+    const { migrationType } = await inquirer.prompt<{ migrationType: MigrationType }>([
+      {
+        type: 'list',
+        name: 'migrationType',
+        message: 'What do you want to migrate?',
+        choices: [
+          { name: 'Calendars (CalDAV - events and tasks)', value: 'calendar' },
+          { name: 'Contacts (CardDAV)', value: 'contacts' },
+        ],
+        default: 'calendar',
+      },
+    ]);
+
     // Source provider configuration
-    console.log(chalk.cyan('Source Provider Configuration'));
-    const sourceConfig = await promptProviderConfig('source');
+    console.log(chalk.cyan('\nSource Provider Configuration'));
+    const sourceConfig = await promptProviderConfig('source', migrationType);
 
     console.log(chalk.cyan('\nTarget Provider Configuration'));
-    const targetConfig = await promptProviderConfig('target');
+    const targetConfig = await promptProviderConfig('target', migrationType);
 
     // Migration options
     console.log(chalk.cyan('\nMigration Options'));
+    const collectionTypeName = migrationType === 'calendar' ? 'events' : 'contacts';
+    const filterLabel = migrationType === 'calendar' ? 'Calendar/addressbook filter' : 'Addressbook filter';
     const migrationOptions = await inquirer.prompt([
       {
         type: 'confirm',
         name: 'overwrite',
-        message: 'Overwrite existing events on target?',
+        message: `Overwrite existing ${collectionTypeName} on target?`,
         default: false,
       },
       {
         type: 'input',
         name: 'calendarFilter',
-        message: 'Calendar filter (regex pattern, leave empty for all):',
+        message: `${filterLabel} (regex pattern, leave empty for all):`,
         default: '',
       },
     ]);
 
     // Build config object
     const config: MigrationConfig = {
+      migrationType,
       source: sourceConfig,
       target: targetConfig,
       options: {
@@ -70,7 +89,7 @@ export async function initCommand(options: { output: string }): Promise<void> {
   }
 }
 
-async function promptProviderConfig(role: 'source' | 'target') {
+async function promptProviderConfig(role: 'source' | 'target', migrationType: MigrationType = 'calendar') {
   // Select provider
   const { provider } = await inquirer.prompt<{ provider: ProviderType }>([
     {

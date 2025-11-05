@@ -14,6 +14,7 @@ import {
   FailedEvent,
   MigrationSummary,
   ProviderType,
+  ObjectType,
 } from '../types/config';
 
 export class StateManager {
@@ -327,6 +328,57 @@ export class StateManager {
 
     if (totalEvents === 0) return 100;
     return Math.round((processedEvents / totalEvents) * 100);
+  }
+
+  /**
+   * Initialize object counts for a calendar
+   * @param calendarId - Calendar index
+   */
+  initializeObjectCounts(calendarId: number): void {
+    if (!this.state.calendars[calendarId].objectCounts) {
+      this.state.calendars[calendarId].objectCounts = {
+        VEVENT: 0,
+        VTODO: 0,
+        VCARD: 0,
+      };
+    }
+  }
+
+  /**
+   * Increment object count for a specific type
+   * @param calendarId - Calendar index
+   * @param objectType - Object type (VEVENT, VTODO, VCARD)
+   */
+  incrementObjectCount(calendarId: number, objectType: ObjectType): void {
+    this.initializeObjectCounts(calendarId);
+    const counts = this.state.calendars[calendarId].objectCounts!;
+    counts[objectType] = (counts[objectType] || 0) + 1;
+    if (this.autoSave) this.save();
+  }
+
+  /**
+   * Store user response for interactive prompt
+   * @param calendarId - Calendar index
+   * @param promptKey - Key identifying the prompt (e.g., "migrateTasks")
+   * @param response - User's response (boolean)
+   */
+  storeUserResponse(calendarId: number, promptKey: string, response: boolean): void {
+    if (!this.state.calendars[calendarId].userResponses) {
+      this.state.calendars[calendarId].userResponses = {};
+    }
+    this.state.calendars[calendarId].userResponses![promptKey] = response;
+    if (this.autoSave) this.save();
+  }
+
+  /**
+   * Get user response for a prompt
+   * @param calendarId - Calendar index
+   * @param promptKey - Key identifying the prompt
+   * @returns User's response or null if not found
+   */
+  getUserResponse(calendarId: number, promptKey: string): boolean | null {
+    const responses = this.state.calendars[calendarId].userResponses;
+    return responses && promptKey in responses ? responses[promptKey] : null;
   }
 
   /**

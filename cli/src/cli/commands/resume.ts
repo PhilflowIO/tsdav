@@ -5,7 +5,7 @@
 
 import * as fs from 'fs';
 import chalk from 'chalk';
-import { MigrationConfig } from '../../types/config';
+import { MigrationConfig, MigrationType } from '../../types/config';
 import { ConfigValidator } from '../../utils/validation';
 import { StateManager } from '../../core/StateManager';
 import { MigrationEngine } from '../../core/MigrationEngine';
@@ -14,8 +14,9 @@ export async function resumeCommand(options: {
   state: string;
   config: string;
   overwrite: boolean;
+  type?: MigrationType;
 }): Promise<void> {
-  console.log(chalk.blue('=== Resuming Calendar Migration ===\n'));
+  console.log(chalk.blue('=== Resuming Migration ===\n'));
 
   try {
     // Load state file
@@ -45,6 +46,13 @@ export async function resumeCommand(options: {
     const validator = new ConfigValidator();
     validator.validateOrThrow(configRaw);
     const config = configRaw as MigrationConfig;
+
+    // Apply type option
+    if (options.type) {
+      config.migrationType = options.type;
+    } else if (!config.migrationType) {
+      config.migrationType = 'calendar';
+    }
 
     // Apply CLI options
     config.options = {
