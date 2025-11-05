@@ -1,7 +1,8 @@
 import fsp from 'fs/promises';
 
 import { createAccount } from '../../../account';
-import { createVCard, fetchAddressBooks, fetchVCards } from '../../../addressBook';
+import { createVCard, fetchAddressBooks, fetchVCards, makeAddressBook } from '../../../addressBook';
+import { DAVNamespaceShort } from '../../../consts';
 import { deleteObject } from '../../../request';
 import { DAVAccount } from '../../../types/models';
 import { getBasicAuthHeaders } from '../../../util/authHelpers';
@@ -86,6 +87,43 @@ test('fetchVCards should be able to fetch vcards', async () => {
 
   const deleteResult = await deleteObject({
     url: new URL('2.vcf', addressBooks[0].url).href,
+    headers: authHeaders,
+  });
+
+  expect(deleteResult.ok).toBe(true);
+});
+
+test('makeAddressBook should be able to create addressbook', async () => {
+  const testAddressBookUrl = `${process.env.CREDENTIAL_NEXTCLOUD_SERVER_URL}/remote.php/dav/addressbooks/users/${process.env.CREDENTIAL_NEXTCLOUD_USERNAME}/test-addressbook-${Date.now()}/`;
+
+  const createResult = await makeAddressBook({
+    url: testAddressBookUrl,
+    props: {
+      [`${DAVNamespaceShort.DAV}:resourcetype`]: {
+        [`${DAVNamespaceShort.DAV}:collection`]: {},
+        [`${DAVNamespaceShort.CARDDAV}:addressbook`]: {},
+      },
+      [`${DAVNamespaceShort.DAV}:displayname`]: 'Test Address Book',
+      [`${DAVNamespaceShort.CARDDAV}:addressbook-description`]: 'Test addressbook created by integration test',
+    },
+    headers: authHeaders,
+  });
+
+  expect(createResult.length > 0).toBe(true);
+  expect(createResult[0].ok).toBe(true);
+
+  // Verify the addressbook was created by fetching it
+  const addressBooks = await fetchAddressBooks({
+    account,
+    headers: authHeaders,
+  });
+
+  const createdAddressBook = addressBooks.find((ab) => ab.url === testAddressBookUrl);
+  expect(createdAddressBook).toBeDefined();
+
+  // Cleanup: delete the test addressbook
+  const deleteResult = await deleteObject({
+    url: testAddressBookUrl,
     headers: authHeaders,
   });
 

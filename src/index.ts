@@ -57,6 +57,7 @@ export {
   createVCard,
   updateVCard,
   deleteVCard,
+  makeAddressBook,
 } from './addressBook';
 
 export {
