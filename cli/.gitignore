@@ -20,6 +20,23 @@ coverage/
 # Migration state files (user data)
 *.migration-state.json
 migration-config.json
+*-migration*.json
+.preview-state*.json
+
+# Example configs (user-generated via init wizard)
+examples/*.json
+
+# Internal documentation (not for repo)
+PROJECT_SUMMARY.md
+QUICKSTART.md
+PHASE2_ISSUES.md
+IMPLEMENTATION_SUMMARY*.md
+ISSUE_*.md
+TESTING_*.md
+
+# Test and debug scripts
+test-*.js
+debug-*.js
 
 # IDE
 .vscode/

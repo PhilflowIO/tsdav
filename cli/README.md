@@ -1,11 +1,13 @@
 # DAV Migration CLI
 
-DSGVO-compliant command-line tool for migrating calendars between CalDAV providers (Google Calendar, Nextcloud, Baïkal).
+DSGVO-compliant command-line tool for migrating calendars and contacts between CalDAV/CardDAV providers (Google, Nextcloud, Baïkal).
 
 ## Features
 
-- **One-time migration** from Google Calendar and Nextcloud to Baïkal (or any CalDAV provider)
-- **DSGVO-compliant**: Zero logging of calendar content (only UIDs and status codes)
+- **CalDAV calendar migration**: Events (VEVENT) and tasks (VTODO) from Google Calendar, Nextcloud, Radicale, Baïkal
+- **CardDAV contacts migration**: Contacts (vCard) from Google Contacts, Nextcloud, Radicale, Baïkal
+- **Interactive task handling**: Prompts user whether to include tasks during calendar migration
+- **DSGVO-compliant**: Zero logging of calendar/contact content (only UIDs and status codes)
 - **Resume capability**: Can resume after network failures or interruptions
 - **Idempotent**: Safe to re-run without creating duplicates
 - **Progress tracking**: Real-time progress bars and detailed summary reports
@@ -18,9 +20,13 @@ DSGVO-compliant command-line tool for migrating calendars between CalDAV provide
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [Authentication Setup](#authentication-setup)
-  - [Google Calendar (OAuth2)](#google-calendar-oauth2)
+  - [Google (OAuth2)](#google-oauth2)
   - [Nextcloud (Basic Auth)](#nextcloud-basic-auth)
   - [Baïkal (Basic Auth)](#baikal-basic-auth)
+- [Migration Types](#migration-types)
+  - [Calendar Migration (CalDAV)](#calendar-migration-caldav)
+  - [Contacts Migration (CardDAV)](#contacts-migration-carddav)
+  - [Tasks Migration (VTODO)](#tasks-migration-vtodo)
 - [Usage](#usage)
   - [Commands](#commands)
   - [Examples](#examples)
@@ -71,9 +77,9 @@ dav-migrate resume --state .migration-state.json --config my-migration.json
 
 ## Authentication Setup
 
-### Google Calendar (OAuth2)
+### Google (OAuth2)
 
-Google Calendar requires OAuth2 authentication. Follow these steps:
+Google Calendar and Google Contacts both use OAuth2 authentication. The same credentials work for both CalDAV and CardDAV. Follow these steps:
 
 #### 1. Create OAuth2 Credentials
 
@@ -181,6 +187,95 @@ BAIKAL_PASSWORD=your-password
 }
 ```
 
+## Migration Types
+
+### Calendar Migration (CalDAV)
+
+Migrate calendars with events (VEVENT) and tasks (VTODO).
+
+**Configuration:**
+```json
+{
+  "migrationType": "calendar"  // or omit (defaults to calendar)
+}
+```
+
+**Supported Objects:**
+- **VEVENT**: Calendar events (meetings, appointments)
+- **VTODO**: Tasks and reminders
+
+**Interactive Task Handling:**
+When tasks are detected in a calendar, the tool will prompt:
+```
+Found 5 task(s) in calendar "Work". Migrate tasks? (y/n):
+```
+This allows you to exclude tasks if the target provider doesn't support them well.
+
+**Example:**
+```bash
+dav-migrate run --config google-to-baikal.json
+```
+
+See `examples/google-to-baikal.json` and `examples/nextcloud-to-baikal.json`.
+
+---
+
+### Contacts Migration (CardDAV)
+
+Migrate addressbooks with contacts (vCard).
+
+**Configuration:**
+```json
+{
+  "migrationType": "contacts"
+}
+```
+
+**Supported Objects:**
+- **VCARD**: Contact cards (names, emails, phones, addresses)
+
+**Example:**
+```bash
+dav-migrate run --config contacts-google-to-baikal.json
+```
+
+**Important Notes:**
+- Google Contacts server URL: `https://www.googleapis.com/.well-known/carddav`
+- Same OAuth2 credentials as Google Calendar
+- DSGVO-compliant: Only vCard UIDs tracked, no contact names/emails stored
+
+See `examples/contacts-google-to-baikal.json` and `examples/contacts-nextcloud-to-baikal.json`.
+
+---
+
+### Tasks Migration (VTODO)
+
+Tasks (VTODO) are part of CalDAV and are handled automatically during calendar migration.
+
+**How it works:**
+1. Tool detects VEVENT and VTODO objects in calendars
+2. Displays count: `Found 10 event(s) and 5 task(s)`
+3. Prompts user: `Migrate tasks? (y/n)`
+4. User decides whether to include tasks
+
+**Why the prompt?**
+- Some providers (e.g., older Baïkal versions) may not support VTODO well
+- Allows selective migration (events-only if needed)
+
+**Dry-run mode:**
+In dry-run mode (`--dryRun`), tasks are detected but no prompt is shown.
+
+**State tracking:**
+State file tracks user's decision and object type counts:
+```json
+{
+  "objectCounts": { "VEVENT": 10, "VTODO": 5 },
+  "userResponses": { "migrateTasks": true }
+}
+```
+
+---
+
 ## Usage
 
 ### Commands
@@ -267,10 +362,25 @@ dav-migrate preview --config my-config.json
 dav-migrate run --config my-config.json
 ```
 
-#### Example 2: Nextcloud → Baïkal (Specific Calendars)
+#### Example 2: Google Contacts → Baïkal
+
+```bash
+# Use the contacts example config
+cp examples/contacts-google-to-baikal.json my-contacts-config.json
+
+# Same .env credentials as calendar migration
+# Edit config with your server URLs
+nano my-contacts-config.json
+
+# Run
+dav-migrate run --config my-contacts-config.json
+```
+
+#### Example 3: Nextcloud → Baïkal (Specific Calendars)
 
 ```json
 {
+  "migrationType": "calendar",
   "source": { /* nextcloud config */ },
   "target": { /* baikal config */ },
   "options": {
@@ -283,7 +393,7 @@ dav-migrate run --config my-config.json
 dav-migrate run --config my-config.json
 ```
 
-#### Example 3: Resume After Interruption
+#### Example 4: Resume After Interruption
 
 ```bash
 # If migration was interrupted (CTRL+C, network failure, etc.)
@@ -296,6 +406,7 @@ dav-migrate resume --state .migration-state.json --config my-config.json
 
 ```json
 {
+  "migrationType": "calendar" | "contacts",  // Optional, defaults to "calendar"
   "source": {
     "provider": "google" | "nextcloud" | "baikal" | "generic",
     "serverUrl": "https://...",
@@ -317,16 +428,16 @@ dav-migrate resume --state .migration-state.json --config my-config.json
     // Same structure as source
   },
   "options": {
-    "overwrite": false,          // Overwrite existing events
+    "overwrite": false,          // Overwrite existing events/contacts
     "interactive": false,        // Interactive conflict resolution
     "dryRun": false,             // Preview mode
     "rateLimit": {
       "source": 2,               // Requests per second
       "target": 10
     },
-    "calendarFilter": "regex",   // Filter calendars by name
+    "calendarFilter": "regex",   // Filter calendars/addressbooks by name
     "timeRange": {
-      "start": "2024-01-01T00:00:00Z",  // ISO 8601
+      "start": "2024-01-01T00:00:00Z",  // ISO 8601 (calendar only)
       "end": "2024-12-31T23:59:59Z"
     }
   }
@@ -350,9 +461,15 @@ The tool will automatically expand these at runtime.
 
 ### Provider-Specific Server URLs
 
-- **Google Calendar**: `https://apidata.googleusercontent.com/caldav/v2/`
-- **Nextcloud**: `https://your-nextcloud-instance.com` (varies by instance)
-- **Baïkal**: `https://your-baikal-server.com` (varies by instance)
+**Google:**
+- Calendar (CalDAV): `https://apidata.googleusercontent.com/caldav/v2/`
+- Contacts (CardDAV): `https://www.googleapis.com/.well-known/carddav`
+
+**Nextcloud:**
+- `https://your-nextcloud-instance.com` (CalDAV and CardDAV auto-discovered)
+
+**Baïkal:**
+- `https://your-baikal-server.com` (CalDAV and CardDAV auto-discovered)
 
 ## DSGVO Compliance
 
@@ -361,19 +478,29 @@ This tool is designed to be fully DSGVO-compliant:
 ### What is Stored
 
 The state file (`.migration-state.json`) contains **ONLY**:
-- Event UIDs (unique identifiers)
+- Object UIDs (unique identifiers for events/contacts/tasks)
 - Migration status codes (`migrated`, `skipped`, `failed`)
+- Object type counts (`VEVENT`, `VTODO`, `VCARD`)
 - HTTP error codes
 - Timestamps
-- Calendar names and URLs
+- Collection names and URLs (calendars/addressbooks)
+- User responses for interactive prompts
 
 ### What is NOT Stored
 
+**Calendar content:**
 - ❌ Event titles
 - ❌ Event descriptions
 - ❌ Attendee information
 - ❌ Locations
-- ❌ Any calendar content
+- ❌ Task details
+
+**Contact content:**
+- ❌ Contact names
+- ❌ Email addresses
+- ❌ Phone numbers
+- ❌ Postal addresses
+- ❌ Any vCard content
 
 ### Local Processing
 
@@ -485,19 +612,25 @@ The state file (`.migration-state.json`) contains **ONLY**:
 
 ## Future Enhancements
 
-See [Phase 2+ Features](https://github.com/natelindev/tsdav/issues) for planned enhancements:
+See [Phase 2+ Features](https://github.com/PhilflowIO/tsdav/issues) for planned enhancements:
 
-- [ ] Contacts migration (CardDAV)
-- [ ] Tasks migration (VTODO)
-- [ ] Microsoft Outlook/Exchange support
-- [ ] Bi-directional sync
-- [ ] Incremental sync (delta changes only)
-- [ ] Interactive conflict resolution (show diffs)
-- [ ] Attachment handling
-- [ ] MCP server integration (Claude Chat)
-- [ ] N8N node development
-- [ ] Web UI with browser OAuth2 flow
-- [ ] Baïkal → Baïkal (cross-instance)
+**Completed:**
+- [x] Contacts migration (CardDAV) - Issue #7
+- [x] Tasks migration (VTODO) - Issue #6
+
+**Planned:**
+- [ ] Microsoft Outlook/Exchange support - Issue #11
+- [ ] Bi-directional sync - Issue #10
+- [ ] Incremental sync (delta changes only) - Issue #9
+- [ ] Interactive conflict resolution (show diffs) - Issue #8
+- [ ] Attachment handling - Issue #12
+- [ ] Baïkal → Baïkal (cross-instance) - Issue #16
+- [ ] Performance optimization for large datasets - Issue #19
+- [ ] Migration templates/presets - Issue #18
+- [ ] Enhanced error reporting - Issue #17
+- [ ] MCP server integration (Claude Chat) - Issue #13
+- [ ] N8N node development - Issue #14
+- [ ] Web UI with browser OAuth2 flow - Issue #15
 
 ## License
 
