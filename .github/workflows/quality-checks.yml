@@ -1,0 +1,116 @@
+name: Quality Checks
+
+on:
+  pull_request:
+    branches: [master, main]
+  push:
+    branches: [master, main]
+
+jobs:
+  validate:
+    name: Validate Code Quality
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Need full history for version comparison
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Check for Claude signatures
+        run: |
+          echo "🔍 Checking for Claude signatures..."
+
+          # Use regex patterns to avoid false positives
+          CLAUDE_SIG1="Generated with.*Claude"
+          CLAUDE_SIG2="Co-Authored-By:.*Claude"
+
+          if git log -1 --pretty=%B | grep -qE "$CLAUDE_SIG1"; then
+            echo "❌ ERROR: Found Claude Code signature in commit message!"
+            exit 1
+          fi
+
+          if git log -1 --pretty=%B | grep -qE "$CLAUDE_SIG2"; then
+            echo "❌ ERROR: Found Claude Co-Authored-By in commit message!"
+            exit 1
+          fi
+
+          # Exclude automation files from diff check
+          if git diff HEAD~1 HEAD -- . ':(exclude).husky/*' ':(exclude).github/*' | grep -qE "$CLAUDE_SIG1"; then
+            echo "❌ ERROR: Found Claude Code signature in diff!"
+            exit 1
+          fi
+
+          if git diff HEAD~1 HEAD -- . ':(exclude).husky/*' ':(exclude).github/*' | grep -qE "$CLAUDE_SIG2"; then
+            echo "❌ ERROR: Found Claude Co-Authored-By in diff!"
+            exit 1
+          fi
+
+          echo "✅ No Claude signatures found"
+
+      - name: Check version bump (on package.json changes)
+        if: github.event_name == 'pull_request'
+        run: |
+          echo "📦 Checking if version was bumped..."
+
+          # Check if package.json was modified
+          if git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -q "package.json"; then
+            OLD_VERSION=$(git show origin/${{ github.base_ref }}:package.json | grep '"version"' | head -1 | sed 's/.*"version": "\(.*\)".*/\1/')
+            NEW_VERSION=$(cat package.json | grep '"version"' | head -1 | sed 's/.*"version": "\(.*\)".*/\1/')
+
+            if [ "$OLD_VERSION" = "$NEW_VERSION" ]; then
+              echo "❌ ERROR: package.json modified but version not bumped!"
+              echo "   Current version: $OLD_VERSION"
+              echo "   Please increment the version"
+              exit 1
+            fi
+
+            echo "✅ Version bumped: $OLD_VERSION → $NEW_VERSION"
+          else
+            echo "ℹ️  package.json not modified, skipping version check"
+          fi
+
+      - name: Verify dist is up-to-date
+        run: |
+          echo "🔨 Verifying dist is up-to-date..."
+
+          # Check if src files were changed
+          if git diff --name-only HEAD~1 HEAD | grep -qE "^src/.*\.(ts|js)$"; then
+            echo "📦 Source files changed, verifying dist..."
+
+            # Build dist
+            npm run clean || npx rimraf dist*
+            npx rollup -c rollup.config.mjs
+            npx copyfiles package.json LICENSE README.md ./dist
+            npx rimraf ./dist/ts
+
+            # Check if there are differences
+            if ! git diff --quiet dist/; then
+              echo "❌ ERROR: dist is out of date!"
+              echo "The following files in dist/ are not up-to-date:"
+              git diff --name-only dist/
+              echo ""
+              echo "Please run 'npm run build' and commit the changes"
+              exit 1
+            fi
+
+            echo "✅ dist is up-to-date"
+          else
+            echo "ℹ️  No source changes, skipping dist check"
+          fi
+
+      - name: Summary
+        if: success()
+        run: |
+          echo ""
+          echo "✅ All quality checks passed!"
+          echo ""

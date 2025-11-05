@@ -1,0 +1,97 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+echo "🔍 Running pre-commit checks..."
+
+# Get list of staged files
+STAGED_FILES=$(git diff --cached --name-only)
+
+# ============================================
+# 1. CHECK FOR CLAUDE SIGNATURES
+# ============================================
+echo "📝 Checking for Claude signatures..."
+
+# Use variables to avoid matching ourselves
+CLAUDE_SIG1="Generated with.*Claude"
+CLAUDE_SIG2="Co-Authored-By:.*Claude"
+
+# Exclude automation files from signature check
+if git diff --cached -- . ':(exclude).husky/*' ':(exclude).github/*' | grep -qE "$CLAUDE_SIG1"; then
+  echo "❌ ERROR: Found Claude Code signature in commit!"
+  echo "Please remove all Claude signatures before committing."
+  exit 1
+fi
+
+if git diff --cached -- . ':(exclude).husky/*' ':(exclude).github/*' | grep -qE "$CLAUDE_SIG2"; then
+  echo "❌ ERROR: Found Claude Co-Authored-By in commit!"
+  echo "Please remove all Claude signatures before committing."
+  exit 1
+fi
+
+echo "✅ No Claude signatures found"
+
+# ============================================
+# 2. VERSION BUMP CHECK
+# ============================================
+echo "📦 Checking package.json version..."
+
+# Check if package.json is being modified
+if echo "$STAGED_FILES" | grep -q "package.json"; then
+  # Get current version from HEAD
+  OLD_VERSION=$(git show HEAD:package.json 2>/dev/null | grep '"version"' | head -1 | sed 's/.*"version": "\(.*\)".*/\1/')
+
+  # Get new version from staged changes
+  NEW_VERSION=$(git show :package.json | grep '"version"' | head -1 | sed 's/.*"version": "\(.*\)".*/\1/')
+
+  if [ -n "$OLD_VERSION" ] && [ "$OLD_VERSION" = "$NEW_VERSION" ]; then
+    echo "❌ ERROR: package.json version not bumped!"
+    echo "   Current version: $OLD_VERSION"
+    echo "   Please increment the version in package.json"
+    echo ""
+    echo "   Hint: Run one of these:"
+    echo "   - npm version patch  (0.0.X)"
+    echo "   - npm version minor  (0.X.0)"
+    echo "   - npm version major  (X.0.0)"
+    exit 1
+  fi
+
+  if [ -n "$NEW_VERSION" ] && [ -n "$OLD_VERSION" ]; then
+    echo "✅ Version bumped: $OLD_VERSION → $NEW_VERSION"
+  fi
+else
+  echo "ℹ️  package.json not modified, skipping version check"
+fi
+
+# ============================================
+# 3. AUTO-BUILD DIST
+# ============================================
+echo "🔨 Building dist..."
+
+# Check if source files were changed
+if echo "$STAGED_FILES" | grep -qE "^src/.*\.(ts|js)$"; then
+  echo "📦 Source files changed, rebuilding dist..."
+
+  # Clean and rebuild
+  npx rimraf dist* 2>/dev/null || true
+  npx rollup -c rollup.config.mjs
+
+  if [ $? -ne 0 ]; then
+    echo "❌ ERROR: Build failed!"
+    exit 1
+  fi
+
+  # Copy metadata files
+  npx copyfiles package.json LICENSE README.md ./dist
+  npx rimraf ./dist/ts
+
+  # Add dist to commit
+  git add dist/
+
+  echo "✅ dist rebuilt and added to commit"
+else
+  echo "ℹ️  No source changes, skipping dist rebuild"
+fi
+
+echo ""
+echo "✅ All pre-commit checks passed!"
+echo ""

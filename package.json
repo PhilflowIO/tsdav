@@ -1,6 +1,6 @@
 {
   "name": "tsdav",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "description": "WebDAV, CALDAV, and CARDDAV client for Nodejs and the Browser",
   "keywords": [
     "dav",
@@ -43,7 +43,8 @@
     "test:unit": "jest --testPathPattern=src/__tests__/unit",
     "test:zoho": "jest --testPathPattern=src/__tests__/integration/zoho --runInBand",
     "typecheck": "tsc --noEmit",
-    "watch": "tsc --watch --outDir ./dist"
+    "watch": "tsc --watch --outDir ./dist",
+    "prepare": "husky"
   },
   "dependencies": {
     "base-64": "1.0.0",
@@ -72,6 +73,7 @@
     "eslint-module-utils": "2.12.0",
     "eslint-plugin-import": "2.31.0",
     "eslint-plugin-prettier": "5.5.0",
+    "husky": "^9.1.7",
     "jest": "30.0.0",
     "prettier": "3.5.3",
     "rimraf": "6.0.1",
