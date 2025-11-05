@@ -32,7 +32,7 @@ test('fetchPrincipalUrl should be able to fetch the url of principal collection'
     },
     headers: authHeaders,
   });
-  expect(url).toMatch(/http:\/\/.+\/remote\.php\/dav\/principals\/users\/.+\//);
+  expect(url).toMatch(/https?:\/\/.+\/remote\.php\/dav\/principals\/users\/.+\//);
 });
 
 test('fetchHomeUrl should be able to fetch the url of home set', async () => {
@@ -53,7 +53,7 @@ test('fetchHomeUrl should be able to fetch the url of home set', async () => {
     },
     headers: authHeaders,
   });
-  expect(url).toMatch(/http:\/\/.+\/remote\.php\/dav\/calendars\/.+\//);
+  expect(url).toMatch(/https?:\/\/.+\/remote\.php\/dav\/calendars\/.+\//);
 });
 
 test('createAccount should be able to create account', async () => {
@@ -65,6 +65,6 @@ test('createAccount should be able to create account', async () => {
     headers: authHeaders,
   });
   expect(account.rootUrl).toEqual(`${process.env.CREDENTIAL_NEXTCLOUD_SERVER_URL}/remote.php/dav/`);
-  expect(account.principalUrl).toMatch(/http:\/\/.+\/remote\.php\/dav\/principals\/users\/.+\//);
-  expect(account.homeUrl).toMatch(/http:\/\/.+\/remote\.php\/dav\/calendars\/.+\//);
+  expect(account.principalUrl).toMatch(/https?:\/\/.+\/remote\.php\/dav\/principals\/users\/.+\//);
+  expect(account.homeUrl).toMatch(/https?:\/\/.+\/remote\.php\/dav\/calendars\/.+\//);
 });
