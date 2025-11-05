@@ -55,3 +55,11 @@ export declare const deleteVCard: (params: {
     headersToExclude?: string[];
     fetchOptions?: RequestInit;
 }) => Promise<Response>;
+export declare const makeAddressBook: (params: {
+    url: string;
+    props: ElementCompact;
+    depth?: DAVDepth;
+    headers?: Record<string, string>;
+    headersToExclude?: string[];
+    fetchOptions?: RequestInit;
+}) => Promise<DAVResponse[]>;

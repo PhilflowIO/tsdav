@@ -762,6 +762,31 @@ const deleteVCard = async (params) => {
         fetchOptions,
     });
 };
+const makeAddressBook = async (params) => {
+    const { url, props, depth, headers, headersToExclude, fetchOptions = {} } = params;
+    return davRequest({
+        url,
+        init: {
+            method: 'MKCOL',
+            headers: excludeHeaders(cleanupFalsy({ depth, ...headers }), headersToExclude),
+            namespace: DAVNamespaceShort.DAV,
+            body: props
+                ? {
+                    mkcol: {
+                        _attributes: getDAVAttribute([
+                            DAVNamespace.DAV,
+                            DAVNamespace.CARDDAV,
+                        ]),
+                        set: {
+                            prop: props,
+                        },
+                    },
+                }
+                : undefined,
+        },
+        fetchOptions,
+    });
+};
 
 var addressBook = /*#__PURE__*/Object.freeze({
     __proto__: null,
@@ -771,6 +796,7 @@ var addressBook = /*#__PURE__*/Object.freeze({
     deleteVCard: deleteVCard,
     fetchAddressBooks: fetchAddressBooks,
     fetchVCards: fetchVCards,
+    makeAddressBook: makeAddressBook,
     updateVCard: updateVCard
 });
 
@@ -1872,6 +1898,7 @@ const createDAVClient = async (params) => {
     // addressBook
     const addressBookQuery$1 = defaultParam(addressBookQuery, { headers: authHeaders });
     const addressBookMultiGet$1 = defaultParam(addressBookMultiGet, { headers: authHeaders });
+    const makeAddressBook$1 = defaultParam(makeAddressBook, { headers: authHeaders });
     const fetchAddressBooks$1 = defaultParam(fetchAddressBooks, {
         account: defaultAccount,
         headers: authHeaders,
@@ -1913,6 +1940,7 @@ const createDAVClient = async (params) => {
         syncCalendars: syncCalendars$1,
         fetchAddressBooks: fetchAddressBooks$1,
         addressBookMultiGet: addressBookMultiGet$1,
+        makeAddressBook: makeAddressBook$1,
         fetchVCards: fetchVCards$1,
         createVCard: createVCard$1,
         updateVCard: updateVCard$1,
@@ -2078,6 +2106,9 @@ class DAVClient {
     async addressBookMultiGet(...params) {
         return defaultParam(addressBookMultiGet, { headers: this.authHeaders, fetchOptions: this.fetchOptions })(params[0]);
     }
+    async makeAddressBook(...params) {
+        return defaultParam(makeAddressBook, { headers: this.authHeaders, fetchOptions: this.fetchOptions })(params[0]);
+    }
     async fetchAddressBooks(...params) {
         return defaultParam(fetchAddressBooks, { headers: this.authHeaders, account: this.account, fetchOptions: this.fetchOptions })(params === null || params === void 0 ? void 0 : params[0]);
     }
@@ -2134,4 +2165,4 @@ var index = {
     ...requestHelpers,
 };
 
-export { DAVAttributeMap, DAVClient, DAVNamespace, DAVNamespaceShort, addressBookMultiGet, addressBookQuery, calendarMultiGet, calendarQuery, cleanupFalsy, collectionQuery, createAccount, createCalendarObject, createDAVClient, createObject, createTodo, createVCard, davRequest, index as default, deleteCalendarObject, deleteObject, deleteTodo, deleteVCard, fetchAddressBooks, fetchCalendarObjects, fetchCalendarUserAddresses, fetchCalendars, fetchOauthTokens, fetchTodos, fetchVCards, freeBusyQuery, getBasicAuthHeaders, getDAVAttribute, getOauthHeaders, isCollectionDirty, makeCalendar, propfind, refreshAccessToken, smartCollectionSync, supportedReportSet, syncCalendars, syncCollection, todoMultiGet, todoQuery, updateCalendarObject, updateObject, updateTodo, updateVCard, urlContains, urlEquals };
+export { DAVAttributeMap, DAVClient, DAVNamespace, DAVNamespaceShort, addressBookMultiGet, addressBookQuery, calendarMultiGet, calendarQuery, cleanupFalsy, collectionQuery, createAccount, createCalendarObject, createDAVClient, createObject, createTodo, createVCard, davRequest, index as default, deleteCalendarObject, deleteObject, deleteTodo, deleteVCard, fetchAddressBooks, fetchCalendarObjects, fetchCalendarUserAddresses, fetchCalendars, fetchOauthTokens, fetchTodos, fetchVCards, freeBusyQuery, getBasicAuthHeaders, getDAVAttribute, getOauthHeaders, isCollectionDirty, makeAddressBook, makeCalendar, propfind, refreshAccessToken, smartCollectionSync, supportedReportSet, syncCalendars, syncCollection, todoMultiGet, todoQuery, updateCalendarObject, updateObject, updateTodo, updateVCard, urlContains, urlEquals };

@@ -766,6 +766,31 @@ const deleteVCard = async (params) => {
         fetchOptions,
     });
 };
+const makeAddressBook = async (params) => {
+    const { url, props, depth, headers, headersToExclude, fetchOptions = {} } = params;
+    return davRequest({
+        url,
+        init: {
+            method: 'MKCOL',
+            headers: excludeHeaders(cleanupFalsy({ depth, ...headers }), headersToExclude),
+            namespace: exports.DAVNamespaceShort.DAV,
+            body: props
+                ? {
+                    mkcol: {
+                        _attributes: getDAVAttribute([
+                            exports.DAVNamespace.DAV,
+                            exports.DAVNamespace.CARDDAV,
+                        ]),
+                        set: {
+                            prop: props,
+                        },
+                    },
+                }
+                : undefined,
+        },
+        fetchOptions,
+    });
+};
 
 var addressBook = /*#__PURE__*/Object.freeze({
     __proto__: null,
@@ -775,6 +800,7 @@ var addressBook = /*#__PURE__*/Object.freeze({
     deleteVCard: deleteVCard,
     fetchAddressBooks: fetchAddressBooks,
     fetchVCards: fetchVCards,
+    makeAddressBook: makeAddressBook,
     updateVCard: updateVCard
 });
 
@@ -1876,6 +1902,7 @@ const createDAVClient = async (params) => {
     // addressBook
     const addressBookQuery$1 = defaultParam(addressBookQuery, { headers: authHeaders });
     const addressBookMultiGet$1 = defaultParam(addressBookMultiGet, { headers: authHeaders });
+    const makeAddressBook$1 = defaultParam(makeAddressBook, { headers: authHeaders });
     const fetchAddressBooks$1 = defaultParam(fetchAddressBooks, {
         account: defaultAccount,
         headers: authHeaders,
@@ -1917,6 +1944,7 @@ const createDAVClient = async (params) => {
         syncCalendars: syncCalendars$1,
         fetchAddressBooks: fetchAddressBooks$1,
         addressBookMultiGet: addressBookMultiGet$1,
+        makeAddressBook: makeAddressBook$1,
         fetchVCards: fetchVCards$1,
         createVCard: createVCard$1,
         updateVCard: updateVCard$1,
@@ -2082,6 +2110,9 @@ class DAVClient {
     async addressBookMultiGet(...params) {
         return defaultParam(addressBookMultiGet, { headers: this.authHeaders, fetchOptions: this.fetchOptions })(params[0]);
     }
+    async makeAddressBook(...params) {
+        return defaultParam(makeAddressBook, { headers: this.authHeaders, fetchOptions: this.fetchOptions })(params[0]);
+    }
     async fetchAddressBooks(...params) {
         return defaultParam(fetchAddressBooks, { headers: this.authHeaders, account: this.account, fetchOptions: this.fetchOptions })(params === null || params === void 0 ? void 0 : params[0]);
     }
@@ -2170,6 +2201,7 @@ exports.getBasicAuthHeaders = getBasicAuthHeaders;
 exports.getDAVAttribute = getDAVAttribute;
 exports.getOauthHeaders = getOauthHeaders;
 exports.isCollectionDirty = isCollectionDirty;
+exports.makeAddressBook = makeAddressBook;
 exports.makeCalendar = makeCalendar;
 exports.propfind = propfind;
 exports.refreshAccessToken = refreshAccessToken;

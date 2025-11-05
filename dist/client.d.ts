@@ -1,4 +1,4 @@
-import { addressBookMultiGet as rawAddressBookMultiGet, addressBookQuery as rawAddressBookQuery, createVCard as rawCreateVCard, deleteVCard as rawDeleteVCard, fetchAddressBooks as rawFetchAddressBooks, fetchVCards as rawFetchVCards, updateVCard as rawUpdateVCard } from './addressBook';
+import { addressBookMultiGet as rawAddressBookMultiGet, addressBookQuery as rawAddressBookQuery, createVCard as rawCreateVCard, deleteVCard as rawDeleteVCard, fetchAddressBooks as rawFetchAddressBooks, fetchVCards as rawFetchVCards, makeAddressBook as rawMakeAddressBook, updateVCard as rawUpdateVCard } from './addressBook';
 import { calendarMultiGet as rawCalendarMultiGet, calendarQuery as rawCalendarQuery, createCalendarObject as rawCreateCalendarObject, deleteCalendarObject as rawDeleteCalendarObject, fetchCalendarObjects as rawFetchCalendarObjects, fetchCalendars as rawFetchCalendars, makeCalendar as rawMakeCalendar, updateCalendarObject as rawUpdateCalendarObject, fetchCalendarUserAddresses as rawFetchCalendarUserAddresses } from './calendar';
 import { collectionQuery as rawCollectionQuery, isCollectionDirty as rawIsCollectionDirty, makeCollection as rawMakeCollection, supportedReportSet as rawSupportedReportSet, syncCollection as rawSyncCollection } from './collection';
 import { createObject as rawCreateObject, deleteObject as rawDeleteObject, propfind as rawPropfind, updateObject as rawUpdateObject } from './request';
@@ -202,6 +202,14 @@ export declare const createDAVClient: (params: {
         headersToExclude?: string[];
         fetchOptions?: RequestInit;
     }) => Promise<DAVResponse[]>;
+    makeAddressBook: (params: {
+        url: string;
+        props: import("xml-js/types").ElementCompact;
+        depth?: import("./types/DAVTypes").DAVDepth;
+        headers?: Record<string, string>;
+        headersToExclude?: string[];
+        fetchOptions?: RequestInit;
+    }) => Promise<DAVResponse[]>;
     fetchVCards: (params: {
         addressBook: DAVAddressBook;
         headers?: Record<string, string>;
@@ -366,6 +374,7 @@ export declare class DAVClient {
     syncCalendars(...params: Parameters<SyncCalendars>): Promise<ReturnType<SyncCalendars>>;
     addressBookQuery(...params: Parameters<typeof rawAddressBookQuery>): Promise<DAVResponse[]>;
     addressBookMultiGet(...params: Parameters<typeof rawAddressBookMultiGet>): Promise<DAVResponse[]>;
+    makeAddressBook(...params: Parameters<typeof rawMakeAddressBook>): Promise<DAVResponse[]>;
     fetchAddressBooks(...params: Parameters<typeof rawFetchAddressBooks>): Promise<DAVAddressBook[]>;
     fetchVCards(...params: Parameters<typeof rawFetchVCards>): Promise<DAVVCard[]>;
     createVCard(...params: Parameters<typeof rawCreateVCard>): Promise<Response>;

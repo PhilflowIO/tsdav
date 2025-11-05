@@ -8,7 +8,7 @@ export { createAccount } from './account';
 export { davRequest, propfind, createObject, updateObject, deleteObject } from './request';
 export { collectionQuery, supportedReportSet, isCollectionDirty, syncCollection, smartCollectionSync, } from './collection';
 export { calendarQuery, calendarMultiGet, makeCalendar, fetchCalendars, fetchCalendarUserAddresses, fetchCalendarObjects, createCalendarObject, updateCalendarObject, deleteCalendarObject, syncCalendars, freeBusyQuery, } from './calendar';
-export { addressBookQuery, addressBookMultiGet, fetchAddressBooks, fetchVCards, createVCard, updateVCard, deleteVCard, } from './addressBook';
+export { addressBookQuery, addressBookMultiGet, fetchAddressBooks, fetchVCards, createVCard, updateVCard, deleteVCard, makeAddressBook, } from './addressBook';
 export { todoQuery, todoMultiGet, fetchTodos, createTodo, updateTodo, deleteTodo, } from './todo';
 export { getBasicAuthHeaders, getOauthHeaders, fetchOauthTokens, refreshAccessToken, } from './util/authHelpers';
 export { urlContains, urlEquals, getDAVAttribute, cleanupFalsy } from './util/requestHelpers';
@@ -241,6 +241,14 @@ declare const _default: {
         headersToExclude?: string[];
         fetchOptions?: RequestInit;
     }) => Promise<Response>;
+    makeAddressBook: (params: {
+        url: string;
+        props: import("xml-js/types").ElementCompact;
+        depth?: import("./types/DAVTypes").DAVDepth;
+        headers?: Record<string, string>;
+        headersToExclude?: string[];
+        fetchOptions?: RequestInit;
+    }) => Promise<import("./types/DAVTypes").DAVResponse[]>;
     serviceDiscovery: (params: {
         account: import("./types/models").DAVAccount;
         headers?: Record<string, string>;
@@ -537,6 +545,14 @@ declare const _default: {
             props: import("xml-js/types").ElementCompact;
             objectUrls: string[];
             depth: import("./types/DAVTypes").DAVDepth;
+            headers?: Record<string, string>;
+            headersToExclude?: string[];
+            fetchOptions?: RequestInit;
+        }) => Promise<import("./types/DAVTypes").DAVResponse[]>;
+        makeAddressBook: (params: {
+            url: string;
+            props: import("xml-js/types").ElementCompact;
+            depth?: import("./types/DAVTypes").DAVDepth;
             headers?: Record<string, string>;
             headersToExclude?: string[];
             fetchOptions?: RequestInit;
