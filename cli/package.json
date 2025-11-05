@@ -1,6 +1,6 @@
 {
   "name": "dav-migrate",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "DSGVO-compliant CLI tool for migrating calendars between CalDAV providers (Google Calendar, Nextcloud, Baïkal)",
   "keywords": [
     "caldav",
