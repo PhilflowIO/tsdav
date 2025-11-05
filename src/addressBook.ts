@@ -4,7 +4,7 @@ import { ElementCompact } from 'xml-js';
 
 import { collectionQuery, supportedReportSet } from './collection';
 import { DAVNamespace, DAVNamespaceShort } from './consts';
-import { createObject, deleteObject, propfind, updateObject } from './request';
+import { createObject, davRequest, deleteObject, propfind, updateObject } from './request';
 import { DAVDepth, DAVResponse } from './types/DAVTypes';
 import { DAVAccount, DAVAddressBook, DAVVCard } from './types/models';
 import { cleanupFalsy, excludeHeaders, getDAVAttribute } from './util/requestHelpers';
@@ -282,6 +282,39 @@ export const deleteVCard = async (params: {
     url: vCard.url,
     etag: vCard.etag,
     headers: excludeHeaders(headers, headersToExclude),
+    fetchOptions,
+  });
+};
+
+export const makeAddressBook = async (params: {
+  url: string;
+  props: ElementCompact;
+  depth?: DAVDepth;
+  headers?: Record<string, string>;
+  headersToExclude?: string[];
+  fetchOptions?: RequestInit;
+}): Promise<DAVResponse[]> => {
+  const { url, props, depth, headers, headersToExclude, fetchOptions = {} } = params;
+  return davRequest({
+    url,
+    init: {
+      method: 'MKCOL',
+      headers: excludeHeaders(cleanupFalsy({ depth, ...headers }), headersToExclude),
+      namespace: DAVNamespaceShort.DAV,
+      body: props
+        ? {
+            mkcol: {
+              _attributes: getDAVAttribute([
+                DAVNamespace.DAV,
+                DAVNamespace.CARDDAV,
+              ]),
+              set: {
+                prop: props,
+              },
+            },
+          }
+        : undefined,
+    },
     fetchOptions,
   });
 };
