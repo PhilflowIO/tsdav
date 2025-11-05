@@ -16,16 +16,100 @@ export class AddressBookCollectionMigrator extends CollectionMigrator {
    * Fetch all addressbooks from source
    */
   async fetchSourceCollections(): Promise<DAVCollection[]> {
-    const addressBooks = await this.sourceClient.fetchAddressBooks();
-    return addressBooks as DAVCollection[];
+    // Temporarily override homeUrl to point to addressbook home for fetching
+    const originalHomeUrl = this.sourceClient.account?.homeUrl;
+
+    try {
+      // Determine the addressbook home URL (same logic as in createCollection)
+      const addressbookHomeSet = (this.sourceClient.account as any)?.addressbookHomeSet;
+
+      if (!addressbookHomeSet) {
+        // Need to construct the addressbook home URL
+        const serverUrl = this.sourceClient.account?.serverUrl?.replace(/\/+$/, '');
+        const username = this.sourceClient.account?.credentials?.username;
+
+        if (serverUrl && username) {
+          let addressbookHomeUrl: string;
+
+          if (this.config.source.provider === 'nextcloud') {
+            addressbookHomeUrl = `${serverUrl}/remote.php/dav/addressbooks/users/${username}/`;
+          } else if (this.config.source.provider === 'generic') {
+            const principalUrl = this.sourceClient.account?.principalUrl;
+            if (principalUrl) {
+              addressbookHomeUrl = principalUrl.replace(/principals\/[^/]+\//, 'addressbooks/');
+              if (!addressbookHomeUrl.endsWith('/')) addressbookHomeUrl += '/';
+            } else {
+              addressbookHomeUrl = originalHomeUrl || '';
+            }
+          } else {
+            addressbookHomeUrl = originalHomeUrl || '';
+          }
+
+          // Temporarily override homeUrl
+          if (this.sourceClient.account) {
+            (this.sourceClient.account as any).homeUrl = addressbookHomeUrl;
+          }
+        }
+      }
+
+      const addressBooks = await this.sourceClient.fetchAddressBooks();
+      return addressBooks as DAVCollection[];
+    } finally {
+      // Restore original homeUrl
+      if (this.sourceClient.account && originalHomeUrl) {
+        (this.sourceClient.account as any).homeUrl = originalHomeUrl;
+      }
+    }
   }
 
   /**
    * Fetch all addressbooks from target
    */
   async fetchTargetCollections(): Promise<DAVCollection[]> {
-    const addressBooks = await this.targetClient.fetchAddressBooks();
-    return addressBooks as DAVCollection[];
+    // Temporarily override homeUrl to point to addressbook home for fetching
+    const originalHomeUrl = this.targetClient.account?.homeUrl;
+
+    try {
+      // Determine the addressbook home URL (same logic as in createCollection)
+      const addressbookHomeSet = (this.targetClient.account as any)?.addressbookHomeSet;
+
+      if (!addressbookHomeSet) {
+        // Need to construct the addressbook home URL
+        const serverUrl = this.targetClient.account?.serverUrl?.replace(/\/+$/, '');
+        const username = this.targetClient.account?.credentials?.username;
+
+        if (serverUrl && username) {
+          let addressbookHomeUrl: string;
+
+          if (this.config.target.provider === 'nextcloud') {
+            addressbookHomeUrl = `${serverUrl}/remote.php/dav/addressbooks/users/${username}/`;
+          } else if (this.config.target.provider === 'generic') {
+            const principalUrl = this.targetClient.account?.principalUrl;
+            if (principalUrl) {
+              addressbookHomeUrl = principalUrl.replace(/principals\/[^/]+\//, 'addressbooks/');
+              if (!addressbookHomeUrl.endsWith('/')) addressbookHomeUrl += '/';
+            } else {
+              addressbookHomeUrl = originalHomeUrl || '';
+            }
+          } else {
+            addressbookHomeUrl = originalHomeUrl || '';
+          }
+
+          // Temporarily override homeUrl
+          if (this.targetClient.account) {
+            (this.targetClient.account as any).homeUrl = addressbookHomeUrl;
+          }
+        }
+      }
+
+      const addressBooks = await this.targetClient.fetchAddressBooks();
+      return addressBooks as DAVCollection[];
+    } finally {
+      // Restore original homeUrl
+      if (this.targetClient.account && originalHomeUrl) {
+        (this.targetClient.account as any).homeUrl = originalHomeUrl;
+      }
+    }
   }
 
   /**
@@ -76,24 +160,90 @@ export class AddressBookCollectionMigrator extends CollectionMigrator {
   async createCollection(displayName: string): Promise<DAVCollection> {
     const addressBookName = displayName.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase() ||
       `addressbook-${Date.now()}`;
-    const homeUrl = this.targetClient.account?.homeUrl?.replace(/\/+$/, '') || '';
-    const newAddressBookUrl = `${homeUrl}/${addressBookName}/`;
 
-    await this.targetClient.makeCollection({
-      url: newAddressBookUrl,
-      props: {
-        displayname: displayName,
-        [`${DAVNamespaceShort.CARDDAV}:addressbook-description`]: `Migrated from ${this.config.source.provider}`,
-      },
-    });
+    // Determine the addressbook home URL
+    let addressbookHomeUrl: string;
+
+    // Try to get addressbookHomeSet first
+    const addressbookHomeSet = (this.targetClient.account as any)?.addressbookHomeSet;
+
+    if (addressbookHomeSet) {
+      // If addressbookHomeSet exists, use it
+      addressbookHomeUrl = (typeof addressbookHomeSet === 'string' ? addressbookHomeSet : addressbookHomeSet.href)
+        .replace(/\/+$/, '');
+    } else {
+      // Fallback: construct the URL based on provider and server URL
+      const serverUrl = this.targetClient.account?.serverUrl?.replace(/\/+$/, '');
+      const username = this.targetClient.account?.credentials?.username;
+
+      if (!serverUrl || !username) {
+        throw new Error('Could not determine server URL or username from account');
+      }
+
+      // Provider-specific URL construction
+      if (this.config.target.provider === 'nextcloud') {
+        // Nextcloud uses: /remote.php/dav/addressbooks/users/{username}/
+        addressbookHomeUrl = `${serverUrl}/remote.php/dav/addressbooks/users/${username}`;
+      } else if (this.config.target.provider === 'generic') {
+        // For generic CardDAV servers, try to construct from principalUrl
+        const principalUrl = this.targetClient.account?.principalUrl;
+        if (principalUrl) {
+          // Replace 'principals' with 'addressbooks' in the path
+          addressbookHomeUrl = principalUrl.replace(/principals\/[^/]+\//, 'addressbooks/').replace(/\/+$/, '');
+        } else {
+          // Last resort: use homeUrl but warn user
+          addressbookHomeUrl = this.targetClient.account?.homeUrl?.replace(/\/+$/, '') || '';
+          console.warn(`  Warning: Using homeUrl for addressbooks (may not work): ${addressbookHomeUrl}`);
+        }
+      } else {
+        // Default: try homeUrl
+        addressbookHomeUrl = this.targetClient.account?.homeUrl?.replace(/\/+$/, '') || '';
+        console.warn(`  Warning: Unknown provider '${this.config.target.provider}', using homeUrl: ${addressbookHomeUrl}`);
+      }
+    }
+
+    if (!addressbookHomeUrl) {
+      throw new Error('Could not determine addressbook home URL from account');
+    }
+
+    const newAddressBookUrl = `${addressbookHomeUrl}/${addressBookName}/`;
+
+    // Use makeAddressBook if available (tsdav v2.1.6+), otherwise fallback to makeCollection
+    try {
+      if (typeof (this.targetClient as any).makeAddressBook === 'function') {
+        await (this.targetClient as any).makeAddressBook({
+          url: newAddressBookUrl,
+          props: {
+            [`${DAVNamespaceShort.DAV}:displayname`]: displayName,
+            [`${DAVNamespaceShort.CARDDAV}:addressbook-description`]: `Migrated from ${this.config.source.provider}`,
+            [`${DAVNamespaceShort.DAV}:resourcetype`]: {
+              [`${DAVNamespaceShort.DAV}:collection`]: {},
+              [`${DAVNamespaceShort.CARDDAV}:addressbook`]: {},
+            },
+          },
+        });
+      } else {
+        // Fallback for older tsdav versions or providers that don't support RFC 5689
+        await this.targetClient.makeCollection({
+          url: newAddressBookUrl,
+          props: {
+            displayname: displayName,
+            [`${DAVNamespaceShort.CARDDAV}:addressbook-description`]: `Migrated from ${this.config.source.provider}`,
+          },
+        });
+      }
+    } catch (error) {
+      throw new Error(`Failed to create addressbook at ${newAddressBookUrl}: ${(error as Error).message}`);
+    }
 
     // Fetch addressbooks again to get the newly created one
     await this.targetRateLimiter.throttle();
-    const updatedAddressBooks = await this.targetClient.fetchAddressBooks();
+    const updatedAddressBooks = await this.fetchTargetCollections();
+
     const newAddressBook = updatedAddressBooks.find((ab) => ab.url === newAddressBookUrl);
 
     if (!newAddressBook) {
-      throw new Error(`Failed to create addressbook: ${displayName}`);
+      throw new Error(`Failed to create addressbook: ${displayName} at ${newAddressBookUrl}`);
     }
 
     return newAddressBook as DAVCollection;
