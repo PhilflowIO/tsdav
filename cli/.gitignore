@@ -1,0 +1,56 @@
+# Dependencies
+node_modules/
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
+
+# Build outputs
+dist/
+*.tsbuildinfo
+
+# Testing
+coverage/
+.nyc_output/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Migration state files (user data)
+*.migration-state.json
+migration-config.json
+*-migration*.json
+.preview-state*.json
+
+# Example configs (user-generated via init wizard)
+examples/*.json
+
+# Internal documentation (not for repo)
+PROJECT_SUMMARY.md
+QUICKSTART.md
+PHASE2_ISSUES.md
+IMPLEMENTATION_SUMMARY*.md
+ISSUE_*.md
+TESTING_*.md
+
+# Test and debug scripts
+test-*.js
+debug-*.js
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
