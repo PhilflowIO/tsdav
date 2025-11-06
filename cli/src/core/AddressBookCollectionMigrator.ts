@@ -32,7 +32,9 @@ export class AddressBookCollectionMigrator extends CollectionMigrator {
           let addressbookHomeUrl: string;
 
           if (this.config.source.provider === 'nextcloud') {
-            addressbookHomeUrl = `${serverUrl}/remote.php/dav/addressbooks/users/${username}/`;
+            // Remove trailing /remote.php/dav if already in serverUrl to avoid duplication
+            const baseUrl = serverUrl.replace(/\/remote\.php\/dav\/?$/, '');
+            addressbookHomeUrl = `${baseUrl}/remote.php/dav/addressbooks/users/${username}/`;
           } else if (this.config.source.provider === 'generic') {
             const principalUrl = this.sourceClient.account?.principalUrl;
             if (principalUrl) {
@@ -82,7 +84,9 @@ export class AddressBookCollectionMigrator extends CollectionMigrator {
           let addressbookHomeUrl: string;
 
           if (this.config.target.provider === 'nextcloud') {
-            addressbookHomeUrl = `${serverUrl}/remote.php/dav/addressbooks/users/${username}/`;
+            // Remove trailing /remote.php/dav if already in serverUrl to avoid duplication
+            const baseUrl = serverUrl.replace(/\/remote\.php\/dav\/?$/, '');
+            addressbookHomeUrl = `${baseUrl}/remote.php/dav/addressbooks/users/${username}/`;
           } else if (this.config.target.provider === 'generic') {
             const principalUrl = this.targetClient.account?.principalUrl;
             if (principalUrl) {
@@ -183,7 +187,9 @@ export class AddressBookCollectionMigrator extends CollectionMigrator {
       // Provider-specific URL construction
       if (this.config.target.provider === 'nextcloud') {
         // Nextcloud uses: /remote.php/dav/addressbooks/users/{username}/
-        addressbookHomeUrl = `${serverUrl}/remote.php/dav/addressbooks/users/${username}`;
+        // Remove trailing /remote.php/dav if already in serverUrl to avoid duplication
+        const baseUrl = serverUrl.replace(/\/remote\.php\/dav\/?$/, '');
+        addressbookHomeUrl = `${baseUrl}/remote.php/dav/addressbooks/users/${username}`;
       } else if (this.config.target.provider === 'generic') {
         // For generic CardDAV servers, try to construct from principalUrl
         const principalUrl = this.targetClient.account?.principalUrl;

@@ -16,15 +16,19 @@ export class ProviderFactory {
   /**
    * Create and initialize a DAVClient for the given provider configuration
    * @param config - Provider configuration
+   * @param accountType - Account type: 'caldav' for calendars, 'carddav' for contacts
    * @returns Initialized DAVClient
    * @throws Error if authentication fails
    */
-  static async createClient(config: ProviderConfig): Promise<DAVClient> {
+  static async createClient(
+    config: ProviderConfig,
+    accountType: 'caldav' | 'carddav' = 'caldav'
+  ): Promise<DAVClient> {
     // Expand environment variables in credentials
     const expandedConfig = this.expandEnvVars(config);
 
     // Create client based on auth method
-    const client = this.createDAVClient(expandedConfig);
+    const client = this.createDAVClient(expandedConfig, accountType);
 
     // Login (authenticate)
     try {
@@ -41,22 +45,30 @@ export class ProviderFactory {
   /**
    * Create DAVClient instance (not yet authenticated)
    * @param config - Provider configuration
+   * @param accountType - Account type: 'caldav' or 'carddav'
    * @returns DAVClient instance
    */
-  private static createDAVClient(config: ProviderConfig): DAVClient {
+  private static createDAVClient(
+    config: ProviderConfig,
+    accountType: 'caldav' | 'carddav' = 'caldav'
+  ): DAVClient {
     if (config.authMethod === 'Oauth') {
-      return this.createOAuthClient(config);
+      return this.createOAuthClient(config, accountType);
     } else {
-      return this.createBasicAuthClient(config);
+      return this.createBasicAuthClient(config, accountType);
     }
   }
 
   /**
    * Create OAuth2 client (for Google Calendar)
    * @param config - Provider configuration
+   * @param accountType - Account type: 'caldav' or 'carddav'
    * @returns DAVClient with OAuth2 credentials
    */
-  private static createOAuthClient(config: ProviderConfig): DAVClient {
+  private static createOAuthClient(
+    config: ProviderConfig,
+    accountType: 'caldav' | 'carddav' = 'caldav'
+  ): DAVClient {
     const creds = config.credentials as OAuth2Credentials;
 
     // Get provider-specific defaults
@@ -72,16 +84,20 @@ export class ProviderFactory {
         clientSecret: creds.clientSecret,
       },
       authMethod: 'Oauth',
-      defaultAccountType: 'caldav',
+      defaultAccountType: accountType,
     });
   }
 
   /**
    * Create Basic Auth client (for Nextcloud, Baïkal, generic)
    * @param config - Provider configuration
+   * @param accountType - Account type: 'caldav' or 'carddav'
    * @returns DAVClient with Basic Auth credentials
    */
-  private static createBasicAuthClient(config: ProviderConfig): DAVClient {
+  private static createBasicAuthClient(
+    config: ProviderConfig,
+    accountType: 'caldav' | 'carddav' = 'caldav'
+  ): DAVClient {
     const creds = config.credentials as BasicAuthCredentials;
 
     return new DAVClient({
@@ -91,7 +107,7 @@ export class ProviderFactory {
         password: creds.password,
       },
       authMethod: 'Basic',
-      defaultAccountType: 'caldav',
+      defaultAccountType: accountType,
     });
   }
 

@@ -47,13 +47,16 @@ export class MigrationEngine {
   async initialize(): Promise<void> {
     console.log(chalk.blue('Initializing DAV clients...'));
 
+    // Determine account type based on migration type
+    const accountType = this.config.migrationType === 'contacts' ? 'carddav' : 'caldav';
+
     // Create and authenticate source client
     console.log(`Source: ${this.config.source.provider}`);
-    this.sourceClient = await ProviderFactory.createClient(this.config.source);
+    this.sourceClient = await ProviderFactory.createClient(this.config.source, accountType);
 
     // Create and authenticate target client
     console.log(`Target: ${this.config.target.provider}`);
-    this.targetClient = await ProviderFactory.createClient(this.config.target);
+    this.targetClient = await ProviderFactory.createClient(this.config.target, accountType);
 
     console.log(chalk.green('✓ Clients initialized and authenticated\n'));
   }
