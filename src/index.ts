@@ -71,6 +71,7 @@ export {
 
 export {
   getBasicAuthHeaders,
+  getBearerAuthHeaders,
   getOauthHeaders,
   fetchOauthTokens,
   refreshAccessToken,

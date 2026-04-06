@@ -12,14 +12,14 @@ It's very common to be used for cloud storage(limited support), as well as calen
 
 | Provider name | WEBDAV | CALDAV | CARDDAV |
 | ------------- | ------ | ------ | ------- |
-| Apple    | ✅     | ✅     | ✅      |
-| Google  | ✅     | ✅     | ✅      |
+| Apple         | ✅     | ✅     | ✅      |
+| Google        | ✅     | ✅     | ✅      |
 | Fastmail      | ✅     | ✅     | ✅      |
 | Nextcloud     | ✅     | ✅     | ✅      |
 | Baikal        | ✅     | ✅     | ✅      |
-| ZOHO          | ✅     | ✅     | ⛔️     |
-| DAViCal       | ✅     | ✅     | ⛔️     |
-| Forward Email | ⛔️ | ✅ | ✅ |
+| ZOHO          | ✅     | ✅     | ✅      |
+| DAViCal       | ✅     | ✅     | ⛔️      |
+| Forward Email | ⛔️     | ✅     | ✅      |
 
 For more information on cloud providers, go to [cloud providers](./cloud%20providers.md) for more information.
 
@@ -34,6 +34,81 @@ or
 ```bash
 npm install tsdav
 ```
+
+### Browser usage
+
+Use the ESM bundle in modern browsers:
+
+```html
+<script type="module">
+  import { createDAVClient } from 'https://unpkg.com/tsdav/dist/tsdav.esm.js';
+
+  const client = await createDAVClient({
+    serverUrl: 'https://caldav.icloud.com',
+    credentials: {
+      username: 'YOUR_APPLE_ID',
+      password: 'YOUR_APP_SPECIFIC_PASSWORD',
+    },
+    authMethod: 'Basic',
+    defaultAccountType: 'caldav',
+  });
+
+  const calendars = await client.fetchCalendars();
+  console.log(calendars);
+</script>
+```
+
+Browser requests to CalDAV/CardDAV endpoints are often blocked by CORS. Prefer running
+tsdav in a server environment, proxying requests through your backend, or using a [custom transport](#custom-transport-electroncors).
+
+### Cloudflare Workers
+
+`tsdav` is compatible with Cloudflare Workers. It automatically detects and uses the native `fetch` provided by the Workers runtime.
+
+Example (using standard Worker syntax):
+
+```ts
+import { createDAVClient } from 'tsdav';
+
+export default {
+  async fetch(request, env) {
+    const client = await createDAVClient({
+      serverUrl: 'https://caldav.icloud.com',
+      credentials: {
+        username: env.APPLE_ID,
+        password: env.APPLE_PASSWORD,
+      },
+      authMethod: 'Basic',
+      defaultAccountType: 'caldav',
+    });
+
+    const calendars = await client.fetchCalendars();
+    return new Response(JSON.stringify(calendars), {
+      headers: { 'Content-Type': 'application/json' },
+    });
+  },
+};
+```
+
+### Custom Transport (Electron/CORS)
+
+If you are using `tsdav` in an environment like an Electron renderer process where `fetch` is restricted by CORS (especially for providers like iCloud or Gmail), you can provide a custom `fetch` implementation to route requests through a proxy or Electron's main process.
+
+```ts
+const client = await createDAVClient({
+  serverUrl: 'https://caldav.icloud.com',
+  credentials: { ... },
+  authMethod: 'Basic',
+  // Custom fetch override
+  fetch: async (url, options) => {
+    // Implement your own transport here, e.g., IPC to main process
+    const response = await window.electronAPI.makeRequest(url, options);
+    return response;
+  },
+});
+```
+
+The custom `fetch` should follow the standard Fetch API interface. This is also supported in the `DAVClient` constructor and most high-level functions.
 
 ### Basic usage
 
@@ -102,6 +177,9 @@ const client = await createDAVClient({
 });
 ```
 
+Need help generating app-specific passwords? See the
+[Apple app-specific password guide](https://support.apple.com/en-us/HT204397).
+
 After `v1.1.0`, you have a new way of creating clients.
 
 :::info
@@ -142,6 +220,9 @@ const client = new DAVClient({
 ```
 
 #### Get calendars
+
+If you are using the class-based `DAVClient`, call `await client.login()` once before
+fetching calendars or other resources.
 
 ```ts
 const calendars = await client.fetchCalendars();

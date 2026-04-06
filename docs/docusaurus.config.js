@@ -5,7 +5,11 @@ module.exports = {
   url: 'https://tsdav.vercel.app',
   baseUrl: '/',
   onBrokenLinks: 'throw',
-  onBrokenMarkdownLinks: 'warn',
+  markdown: {
+    hooks: {
+      onBrokenMarkdownLinks: 'warn',
+    },
+  },
   favicon: 'img/favicon.ico',
   organizationName: 'natelindev', // Usually your GitHub org/user name.
   projectName: 'tsdav', // Usually your repo name.
@@ -55,11 +59,11 @@ module.exports = {
         docs: {
           path: 'docs',
           sidebarPath: require.resolve('./sidebars.js'),
-          editUrl: 'https://github.com/natelindev/tsdav/edit/master/docs/',
+          editUrl: 'https://github.com/natelindev/tsdav/edit/main/docs/',
           lastVersion: 'current',
           versions: {
             current: {
-              label: '2.1.5',
+              label: '2.1.8',
             },
             '1.1.6': {
               label: '1.1.6',
@@ -77,12 +81,36 @@ module.exports = {
     ],
   ],
   plugins: [
+    '@cmfcmf/docusaurus-search-local',
+    require.resolve('./docusuarusWebpack5Plugin'),
+    'docusaurus-markdown-source-plugin',
     [
-      require.resolve('@easyops-cn/docusaurus-search-local'),
+      'docusaurus-plugin-llms',
       {
-        hashed: true,
+        generateLLMsTxt: true,
+        generateLLMsFullTxt: true,
+        docsDir: 'docs',
+        title: 'tsdav Documentation',
+        description:
+          'TypeScript WebDAV client library wrapping CalDAV and CardDAV workflows for browsers and Node.js.',
+        excludeImports: true,
+        removeDuplicateHeadings: true,
+        includeOrder: [
+          'intro.*',
+          'webdav/**/*',
+          'caldav/**/*',
+          'carddav/**/*',
+          'types/**/*',
+          'helpers/**/*',
+          'helper.*',
+          'smart calendar sync.*',
+          'cloud providers.*',
+          'migration.*',
+          'contributing.*',
+          'llms.*',
+        ],
+        includeUnmatchedLast: true,
       },
     ],
-    require.resolve('./docusuarusWebpack5Plugin'),
   ],
 };

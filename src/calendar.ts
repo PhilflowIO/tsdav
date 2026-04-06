@@ -26,8 +26,9 @@ export const fetchCalendarUserAddresses = async (params: {
   headers?: Record<string, string>;
   headersToExclude?: string[];
   fetchOptions?: RequestInit;
+  fetch?: typeof fetch;
 }): Promise<string[]> => {
-  const { account, headers, headersToExclude, fetchOptions = {} } = params;
+  const { account, headers, headersToExclude, fetchOptions = {}, fetch: fetchOverride } = params;
   const requiredFields: Array<'principalUrl' | 'rootUrl'> = ['principalUrl', 'rootUrl'];
   if (!hasFields(account, requiredFields)) {
     throw new Error(
@@ -42,6 +43,7 @@ export const fetchCalendarUserAddresses = async (params: {
     depth: '0',
     headers: excludeHeaders(headers, headersToExclude),
     fetchOptions,
+    fetch: fetchOverride,
   });
 
   const matched = responses.find((r) => urlContains(account.principalUrl, r.href));
@@ -64,6 +66,7 @@ export const calendarQuery = async (params: {
   headers?: Record<string, string>;
   headersToExclude?: string[];
   fetchOptions?: RequestInit;
+  fetch?: typeof fetch;
 }): Promise<DAVResponse[]> => {
   const {
     url,
@@ -74,6 +77,7 @@ export const calendarQuery = async (params: {
     headers,
     headersToExclude,
     fetchOptions = {},
+    fetch: fetchOverride,
   } = params;
   return collectionQuery({
     url,
@@ -94,6 +98,7 @@ export const calendarQuery = async (params: {
     depth,
     headers: excludeHeaders(headers, headersToExclude),
     fetchOptions,
+    fetch: fetchOverride,
   });
 };
 
@@ -107,6 +112,7 @@ export const calendarMultiGet = async (params: {
   headers?: Record<string, string>;
   headersToExclude?: string[];
   fetchOptions?: RequestInit;
+  fetch?: typeof fetch;
 }): Promise<DAVResponse[]> => {
   const {
     url,
@@ -118,6 +124,7 @@ export const calendarMultiGet = async (params: {
     headers,
     headersToExclude,
     fetchOptions = {},
+    fetch: fetchOverride,
   } = params;
   return collectionQuery({
     url,
@@ -134,6 +141,7 @@ export const calendarMultiGet = async (params: {
     depth,
     headers: excludeHeaders(headers, headersToExclude),
     fetchOptions,
+    fetch: fetchOverride,
   });
 };
 
@@ -144,8 +152,17 @@ export const makeCalendar = async (params: {
   headers?: Record<string, string>;
   headersToExclude?: string[];
   fetchOptions?: RequestInit;
+  fetch?: typeof fetch;
 }): Promise<DAVResponse[]> => {
-  const { url, props, depth, headers, headersToExclude, fetchOptions = {} } = params;
+  const {
+    url,
+    props,
+    depth,
+    headers,
+    headersToExclude,
+    fetchOptions = {},
+    fetch: fetchOverride,
+  } = params;
   return davRequest({
     url,
     init: {
@@ -166,6 +183,7 @@ export const makeCalendar = async (params: {
       },
     },
     fetchOptions,
+    fetch: fetchOverride,
   });
 };
 
@@ -176,6 +194,7 @@ export const fetchCalendars = async (params?: {
   headers?: Record<string, string>;
   headersToExclude?: string[];
   fetchOptions?: RequestInit;
+  fetch?: typeof fetch;
 }): Promise<DAVCalendar[]> => {
   const {
     headers,
@@ -184,6 +203,7 @@ export const fetchCalendars = async (params?: {
     projectedProps,
     headersToExclude,
     fetchOptions = {},
+    fetch: fetchOverride,
   } = params ?? {};
   const requiredFields: Array<'homeUrl' | 'rootUrl'> = ['homeUrl', 'rootUrl'];
   if (!account || !hasFields(account, requiredFields)) {
@@ -210,6 +230,7 @@ export const fetchCalendars = async (params?: {
     depth: '1',
     headers: excludeHeaders(headers, headersToExclude),
     fetchOptions,
+    fetch: fetchOverride,
   });
 
   return Promise.all(
@@ -254,6 +275,7 @@ export const fetchCalendars = async (params?: {
           collection: cal,
           headers: excludeHeaders(headers, headersToExclude),
           fetchOptions,
+          fetch: fetchOverride,
         }),
       })),
   );
@@ -270,6 +292,7 @@ export const fetchCalendarObjects = async (params: {
   headersToExclude?: string[];
   useMultiGet?: boolean;
   fetchOptions?: RequestInit;
+  fetch?: typeof fetch;
 }): Promise<DAVCalendarObject[]> => {
   const {
     calendar,
@@ -282,6 +305,7 @@ export const fetchCalendarObjects = async (params: {
     useMultiGet = true,
     headersToExclude,
     fetchOptions = {},
+    fetch: fetchOverride,
   } = params;
 
   if (timeRange) {
@@ -333,38 +357,39 @@ export const fetchCalendarObjects = async (params: {
     },
   ];
 
+  let initialResponses: DAVResponse[] = [];
   const calendarObjectUrls = (
     objectUrls ??
     // fetch all objects of the calendar
-    (
-      await calendarQuery({
-        url: calendar.url,
-        props: {
-          [`${DAVNamespaceShort.DAV}:getetag`]: {
-            ...(expand && timeRange
-              ? {
-                  [`${DAVNamespaceShort.CALDAV}:expand`]: {
-                    _attributes: {
-                      start: `${new Date(timeRange.start)
-                        .toISOString()
-                        .slice(0, 19)
-                        .replace(/[-:.]/g, '')}Z`,
-                      end: `${new Date(timeRange.end)
-                        .toISOString()
-                        .slice(0, 19)
-                        .replace(/[-:.]/g, '')}Z`,
-                    },
+    (initialResponses = await calendarQuery({
+      url: calendar.url,
+      props: {
+        [`${DAVNamespaceShort.DAV}:getetag`]: {},
+        ...(expand && timeRange
+          ? {
+              [`${DAVNamespaceShort.CALDAV}:calendar-data`]: {
+                [`${DAVNamespaceShort.CALDAV}:expand`]: {
+                  _attributes: {
+                    start: `${new Date(timeRange.start)
+                      .toISOString()
+                      .slice(0, 19)
+                      .replace(/[-:.]/g, '')}Z`,
+                    end: `${new Date(timeRange.end)
+                      .toISOString()
+                      .slice(0, 19)
+                      .replace(/[-:.]/g, '')}Z`,
                   },
-                }
-              : {}),
-          },
-        },
-        filters,
-        depth: '1',
-        headers: excludeHeaders(headers, headersToExclude),
-        fetchOptions,
-      })
-    ).map((res) => res.href ?? '')
+                },
+              },
+            }
+          : {}),
+      },
+      filters,
+      depth: '1',
+      headers: excludeHeaders(headers, headersToExclude),
+      fetchOptions,
+      fetch: fetchOverride,
+    })).map((res) => res.href ?? '')
   )
     .map((url) => (url.startsWith('http') || !url ? url : new URL(url, calendar.url).href)) // patch up to full url if url is not full
     .filter(urlFilter) // custom filter function on calendar objects
@@ -373,7 +398,14 @@ export const fetchCalendarObjects = async (params: {
   let calendarObjectResults: DAVResponse[] = [];
 
   if (calendarObjectUrls.length > 0) {
-    if (!useMultiGet || expand) {
+    if (expand && !objectUrls) {
+      calendarObjectResults = initialResponses.filter((res) => {
+        const fullUrl = (res.href ?? '').startsWith('http')
+          ? res.href
+          : new URL(res.href ?? '', calendar.url).href;
+        return urlFilter(fullUrl ?? '');
+      });
+    } else if (!useMultiGet) {
       calendarObjectResults = await calendarQuery({
         url: calendar.url,
         props: {
@@ -401,6 +433,7 @@ export const fetchCalendarObjects = async (params: {
         depth: '1',
         headers: excludeHeaders(headers, headersToExclude),
         fetchOptions,
+        fetch: fetchOverride,
       });
     } else {
       calendarObjectResults = await calendarMultiGet({
@@ -430,6 +463,7 @@ export const fetchCalendarObjects = async (params: {
         depth: '1',
         headers: excludeHeaders(headers, headersToExclude),
         fetchOptions,
+        fetch: fetchOverride,
       });
     }
   }
@@ -448,8 +482,17 @@ export const createCalendarObject = async (params: {
   headers?: Record<string, string>;
   headersToExclude?: string[];
   fetchOptions?: RequestInit;
+  fetch?: typeof fetch;
 }): Promise<Response> => {
-  const { calendar, iCalString, filename, headers, headersToExclude, fetchOptions = {} } = params;
+  const {
+    calendar,
+    iCalString,
+    filename,
+    headers,
+    headersToExclude,
+    fetchOptions = {},
+    fetch: fetchOverride,
+  } = params;
 
   return createObject({
     url: new URL(filename, calendar.url).href,
@@ -463,6 +506,7 @@ export const createCalendarObject = async (params: {
       headersToExclude,
     ),
     fetchOptions,
+    fetch: fetchOverride,
   });
 };
 
@@ -471,8 +515,15 @@ export const updateCalendarObject = async (params: {
   headers?: Record<string, string>;
   headersToExclude?: string[];
   fetchOptions?: RequestInit;
+  fetch?: typeof fetch;
 }): Promise<Response> => {
-  const { calendarObject, headers, headersToExclude, fetchOptions = {} } = params;
+  const {
+    calendarObject,
+    headers,
+    headersToExclude,
+    fetchOptions = {},
+    fetch: fetchOverride,
+  } = params;
   return updateObject({
     url: calendarObject.url,
     data: calendarObject.data,
@@ -485,6 +536,7 @@ export const updateCalendarObject = async (params: {
       headersToExclude,
     ),
     fetchOptions,
+    fetch: fetchOverride,
   });
 };
 
@@ -493,13 +545,21 @@ export const deleteCalendarObject = async (params: {
   headers?: Record<string, string>;
   headersToExclude?: string[];
   fetchOptions?: RequestInit;
+  fetch?: typeof fetch;
 }): Promise<Response> => {
-  const { calendarObject, headers, headersToExclude, fetchOptions = {} } = params;
+  const {
+    calendarObject,
+    headers,
+    headersToExclude,
+    fetchOptions = {},
+    fetch: fetchOverride,
+  } = params;
   return deleteObject({
     url: calendarObject.url,
     etag: calendarObject.etag,
     headers: excludeHeaders(headers, headersToExclude),
     fetchOptions,
+    fetch: fetchOverride,
   });
 };
 
@@ -513,6 +573,7 @@ export const syncCalendars: SyncCalendars = async (params: {
   account?: DAVAccount;
   detailedResult?: boolean;
   fetchOptions?: RequestInit;
+  fetch?: typeof fetch;
 }): Promise<any> => {
   const {
     oldCalendars,
@@ -521,6 +582,7 @@ export const syncCalendars: SyncCalendars = async (params: {
     headers,
     headersToExclude,
     fetchOptions = {},
+    fetch: fetchOverride,
   } = params;
   if (!account) {
     throw new Error('Must have account before syncCalendars');
@@ -531,6 +593,7 @@ export const syncCalendars: SyncCalendars = async (params: {
     account,
     headers: excludeHeaders(headers, headersToExclude),
     fetchOptions,
+    fetch: fetchOverride,
   });
 
   // no existing url
@@ -556,11 +619,12 @@ export const syncCalendars: SyncCalendars = async (params: {
   const updatedWithObjects: DAVCalendar[] = await Promise.all(
     updated.map(async (u) => {
       const result = await smartCollectionSync({
-        collection: { ...u, objectMultiGet: calendarMultiGet },
+        collection: { ...u, objectMultiGet: calendarMultiGet } as any,
         method: 'webdav',
         headers: excludeHeaders(headers, headersToExclude),
         account,
         fetchOptions,
+        fetch: fetchOverride,
       });
       return result;
     }),
@@ -597,8 +661,17 @@ export const freeBusyQuery = async (params: {
   headers?: Record<string, string>;
   headersToExclude?: string[];
   fetchOptions?: RequestInit;
+  fetch?: typeof fetch;
 }): Promise<DAVResponse> => {
-  const { url, timeRange, depth, headers, headersToExclude, fetchOptions = {} } = params;
+  const {
+    url,
+    timeRange,
+    depth,
+    headers,
+    headersToExclude,
+    fetchOptions = {},
+    fetch: fetchOverride,
+  } = params;
 
   if (timeRange) {
     validateISO8601TimeRange(timeRange.start, timeRange.end);
@@ -623,6 +696,7 @@ export const freeBusyQuery = async (params: {
     depth,
     headers: excludeHeaders(headers, headersToExclude),
     fetchOptions,
+    fetch: fetchOverride,
   });
   return result[0];
 };
