@@ -56,4 +56,49 @@ describe('DAVClient fetch override', () => {
 
     expect(mockFetch).toHaveBeenCalled();
   });
+
+  it('DAVClient should use fetch override in makeAddressBook', async () => {
+    const mockFetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: jest.fn().mockResolvedValue(''),
+      headers: new Map(),
+    });
+
+    const client = new DAVClient({
+      serverUrl: 'http://example.com',
+      credentials: mockCredentials,
+      fetch: mockFetch,
+    });
+
+    await client.makeAddressBook({
+      url: 'http://example.com/user/addr/',
+      props: {},
+    });
+
+    expect(mockFetch).toHaveBeenCalled();
+  });
+
+  it('createDAVClient should use fetch override in makeAddressBook', async () => {
+    const mockFetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: jest.fn().mockResolvedValue(''),
+      headers: new Map(),
+    });
+
+    const client = await createDAVClient({
+      serverUrl: 'http://example.com',
+      credentials: mockCredentials,
+      authMethod: 'Basic',
+      fetch: mockFetch,
+    });
+
+    await client.makeAddressBook({
+      url: 'http://example.com/user/addr/',
+      props: {},
+    });
+
+    expect(mockFetch).toHaveBeenCalled();
+  });
 });
