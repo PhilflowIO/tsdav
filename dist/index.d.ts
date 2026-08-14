@@ -8,7 +8,8 @@ export { createAccount } from './account';
 export { davRequest, propfind, createObject, updateObject, deleteObject } from './request';
 export { collectionQuery, supportedReportSet, isCollectionDirty, syncCollection, smartCollectionSync, } from './collection';
 export { calendarQuery, calendarMultiGet, makeCalendar, fetchCalendars, fetchCalendarUserAddresses, fetchCalendarObjects, createCalendarObject, updateCalendarObject, deleteCalendarObject, syncCalendars, freeBusyQuery, } from './calendar';
-export { addressBookQuery, addressBookMultiGet, fetchAddressBooks, fetchVCards, createVCard, updateVCard, deleteVCard, } from './addressBook';
+export { addressBookQuery, addressBookMultiGet, fetchAddressBooks, fetchVCards, createVCard, updateVCard, deleteVCard, makeAddressBook, } from './addressBook';
+export { todoQuery, todoMultiGet, fetchTodos, createTodo, updateTodo, deleteTodo, } from './todo';
 export { getBasicAuthHeaders, getBearerAuthHeaders, getOauthHeaders, fetchOauthTokens, refreshAccessToken, } from './util/authHelpers';
 export { urlContains, urlEquals, getDAVAttribute, cleanupFalsy } from './util/requestHelpers';
 export { DAVNamespace, DAVAttributeMap, DAVNamespaceShort } from './consts';
@@ -23,6 +24,8 @@ declare const _default: {
         [key: string]: T;
     };
     excludeHeaders: (headers: Record<string, string> | undefined, headersToExclude: string[] | undefined) => Record<string, string>;
+    defaultIcsFilter: (url: string) => boolean;
+    validateISO8601TimeRange: (start: string, end: string) => void;
     defaultParam: <F extends (...args: any[]) => any>(fn: F, params: Partial<Parameters<F>[0]>) => (...args: Parameters<F>) => ReturnType<F>;
     getBasicAuthHeaders: (credentials: import("./types/models").DAVCredentials) => {
         authorization?: string;
@@ -41,6 +44,62 @@ declare const _default: {
             authorization?: string;
         };
     }>;
+    todoQuery: (params: {
+        url: string;
+        props: import("xml-js/types").ElementCompact;
+        filters?: import("xml-js/types").ElementCompact;
+        timezone?: string;
+        depth?: import("./types/DAVTypes").DAVDepth;
+        headers?: Record<string, string>;
+        headersToExclude?: string[];
+        fetchOptions?: RequestInit;
+    }) => Promise<import("./types/DAVTypes").DAVResponse[]>;
+    todoMultiGet: (params: {
+        url: string;
+        props: import("xml-js/types").ElementCompact;
+        objectUrls?: string[];
+        timezone?: string;
+        depth: import("./types/DAVTypes").DAVDepth;
+        filters?: import("xml-js/types").ElementCompact;
+        headers?: Record<string, string>;
+        headersToExclude?: string[];
+        fetchOptions?: RequestInit;
+    }) => Promise<import("./types/DAVTypes").DAVResponse[]>;
+    fetchTodos: (params: {
+        calendar: import("./types/models").DAVCalendar;
+        objectUrls?: string[];
+        filters?: import("xml-js/types").ElementCompact;
+        timeRange?: {
+            start: string;
+            end: string;
+        };
+        expand?: boolean;
+        urlFilter?: (url: string) => boolean;
+        headers?: Record<string, string>;
+        headersToExclude?: string[];
+        useMultiGet?: boolean;
+        fetchOptions?: RequestInit;
+    }) => Promise<import("./types/models").DAVCalendarObject[]>;
+    createTodo: (params: {
+        calendar: import("./types/models").DAVCalendar;
+        iCalString: string;
+        filename: string;
+        headers?: Record<string, string>;
+        headersToExclude?: string[];
+        fetchOptions?: RequestInit;
+    }) => Promise<Response>;
+    updateTodo: (params: {
+        calendarObject: import("./types/models").DAVCalendarObject;
+        headers?: Record<string, string>;
+        headersToExclude?: string[];
+        fetchOptions?: RequestInit;
+    }) => Promise<Response>;
+    deleteTodo: (params: {
+        calendarObject: import("./types/models").DAVCalendarObject;
+        headers?: Record<string, string>;
+        headersToExclude?: string[];
+        fetchOptions?: RequestInit;
+    }) => Promise<Response>;
     fetchCalendarUserAddresses: (params: {
         account: import("./types/models").DAVAccount;
         headers?: Record<string, string>;
@@ -202,6 +261,14 @@ declare const _default: {
         fetchOptions?: RequestInit;
         fetch?: typeof fetch;
     }) => Promise<Response>;
+    makeAddressBook: (params: {
+        url: string;
+        props: import("xml-js/types").ElementCompact;
+        depth?: import("./types/DAVTypes").DAVDepth;
+        headers?: Record<string, string>;
+        headersToExclude?: string[];
+        fetchOptions?: RequestInit;
+    }) => Promise<import("./types/DAVTypes").DAVResponse[]>;
     serviceDiscovery: (params: {
         account: import("./types/models").DAVAccount;
         headers?: Record<string, string>;
@@ -540,6 +607,14 @@ declare const _default: {
             fetchOptions?: RequestInit;
             fetch?: typeof fetch;
         }) => Promise<import("./types/DAVTypes").DAVResponse[]>;
+        makeAddressBook: (params: {
+            url: string;
+            props: import("xml-js/types").ElementCompact;
+            depth?: import("./types/DAVTypes").DAVDepth;
+            headers?: Record<string, string>;
+            headersToExclude?: string[];
+            fetchOptions?: RequestInit;
+        }) => Promise<import("./types/DAVTypes").DAVResponse[]>;
         fetchVCards: (params: {
             addressBook: import("./types/models").DAVAddressBook;
             headers?: Record<string, string>;
@@ -572,6 +647,62 @@ declare const _default: {
             headersToExclude?: string[];
             fetchOptions?: RequestInit;
             fetch?: typeof fetch;
+        }) => Promise<Response>;
+        todoQuery: (params: {
+            url: string;
+            props: import("xml-js/types").ElementCompact;
+            filters?: import("xml-js/types").ElementCompact;
+            timezone?: string;
+            depth?: import("./types/DAVTypes").DAVDepth;
+            headers?: Record<string, string>;
+            headersToExclude?: string[];
+            fetchOptions?: RequestInit;
+        }) => Promise<import("./types/DAVTypes").DAVResponse[]>;
+        todoMultiGet: (params: {
+            url: string;
+            props: import("xml-js/types").ElementCompact;
+            objectUrls?: string[];
+            timezone?: string;
+            depth: import("./types/DAVTypes").DAVDepth;
+            filters?: import("xml-js/types").ElementCompact;
+            headers?: Record<string, string>;
+            headersToExclude?: string[];
+            fetchOptions?: RequestInit;
+        }) => Promise<import("./types/DAVTypes").DAVResponse[]>;
+        fetchTodos: (params: {
+            calendar: import("./types/models").DAVCalendar;
+            objectUrls?: string[];
+            filters?: import("xml-js/types").ElementCompact;
+            timeRange?: {
+                start: string;
+                end: string;
+            };
+            expand?: boolean;
+            urlFilter?: (url: string) => boolean;
+            headers?: Record<string, string>;
+            headersToExclude?: string[];
+            useMultiGet?: boolean;
+            fetchOptions?: RequestInit;
+        }) => Promise<import("./types/models").DAVObject[]>;
+        createTodo: (params: {
+            calendar: import("./types/models").DAVCalendar;
+            iCalString: string;
+            filename: string;
+            headers?: Record<string, string>;
+            headersToExclude?: string[];
+            fetchOptions?: RequestInit;
+        }) => Promise<Response>;
+        updateTodo: (params: {
+            calendarObject: import("./types/models").DAVCalendarObject;
+            headers?: Record<string, string>;
+            headersToExclude?: string[];
+            fetchOptions?: RequestInit;
+        }) => Promise<Response>;
+        deleteTodo: (params: {
+            calendarObject: import("./types/models").DAVCalendarObject;
+            headers?: Record<string, string>;
+            headersToExclude?: string[];
+            fetchOptions?: RequestInit;
         }) => Promise<Response>;
     }>;
     DAVClient: typeof client.DAVClient;
