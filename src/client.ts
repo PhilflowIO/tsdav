@@ -290,12 +290,30 @@ export const createDAVClient = async (params: {
   });
 
   // todo
-  const todoQuery = defaultParam(rawTodoQuery, { headers: authHeaders });
-  const todoMultiGet = defaultParam(rawTodoMultiGet, { headers: authHeaders });
-  const fetchTodos = defaultParam(rawFetchTodos, { headers: authHeaders });
-  const createTodo = defaultParam(rawCreateTodo, { headers: authHeaders });
-  const updateTodo = defaultParam(rawUpdateTodo, { headers: authHeaders });
-  const deleteTodo = defaultParam(rawDeleteTodo, { headers: authHeaders });
+  const todoQuery = defaultParam(rawTodoQuery, {
+    headers: authHeaders,
+    fetch: fetchOverride,
+  });
+  const todoMultiGet = defaultParam(rawTodoMultiGet, {
+    headers: authHeaders,
+    fetch: fetchOverride,
+  });
+  const fetchTodos = defaultParam(rawFetchTodos, {
+    headers: authHeaders,
+    fetch: fetchOverride,
+  });
+  const createTodo = defaultParam(rawCreateTodo, {
+    headers: authHeaders,
+    fetch: fetchOverride,
+  });
+  const updateTodo = defaultParam(rawUpdateTodo, {
+    headers: authHeaders,
+    fetch: fetchOverride,
+  });
+  const deleteTodo = defaultParam(rawDeleteTodo, {
+    headers: authHeaders,
+    fetch: fetchOverride,
+  });
 
   return {
     davRequest,
@@ -742,26 +760,50 @@ export class DAVClient {
   }
 
   async todoQuery(...params: Parameters<typeof rawTodoQuery>): Promise<DAVResponse[]> {
-    return defaultParam(rawTodoQuery, { headers: this.authHeaders, fetchOptions: this.fetchOptions })(params[0]);
+    return defaultParam(rawTodoQuery, {
+      headers: this.authHeaders,
+      fetchOptions: this.fetchOptions,
+      fetch: this.fetchOverride,
+    })(params[0]);
   }
 
   async todoMultiGet(...params: Parameters<typeof rawTodoMultiGet>): Promise<DAVResponse[]> {
-    return defaultParam(rawTodoMultiGet, { headers: this.authHeaders, fetchOptions: this.fetchOptions })(params[0]);
+    return defaultParam(rawTodoMultiGet, {
+      headers: this.authHeaders,
+      fetchOptions: this.fetchOptions,
+      fetch: this.fetchOverride,
+    })(params[0]);
   }
 
   async fetchTodos(...params: Parameters<typeof rawFetchTodos>): Promise<DAVCalendarObject[]> {
-    return defaultParam(rawFetchTodos, { headers: this.authHeaders, fetchOptions: this.fetchOptions })(params[0]);
+    return defaultParam(rawFetchTodos, {
+      headers: this.authHeaders,
+      fetchOptions: this.fetchOptions,
+      fetch: this.fetchOverride,
+    })(params[0]);
   }
 
   async createTodo(...params: Parameters<typeof rawCreateTodo>): Promise<Response> {
-    return defaultParam(rawCreateTodo, { headers: this.authHeaders, fetchOptions: this.fetchOptions })(params[0]);
+    return defaultParam(rawCreateTodo, {
+      headers: this.authHeaders,
+      fetchOptions: this.fetchOptions,
+      fetch: this.fetchOverride,
+    })(params[0]);
   }
 
   async updateTodo(...params: Parameters<typeof rawUpdateTodo>): Promise<Response> {
-    return defaultParam(rawUpdateTodo, { headers: this.authHeaders, fetchOptions: this.fetchOptions })(params[0]);
+    return defaultParam(rawUpdateTodo, {
+      headers: this.authHeaders,
+      fetchOptions: this.fetchOptions,
+      fetch: this.fetchOverride,
+    })(params[0]);
   }
 
   async deleteTodo(...params: Parameters<typeof rawDeleteTodo>): Promise<Response> {
-    return defaultParam(rawDeleteTodo, { headers: this.authHeaders, fetchOptions: this.fetchOptions })(params[0]);
+    return defaultParam(rawDeleteTodo, {
+      headers: this.authHeaders,
+      fetchOptions: this.fetchOptions,
+      fetch: this.fetchOverride,
+    })(params[0]);
   }
 }

@@ -53,6 +53,7 @@ declare const _default: {
         headers?: Record<string, string>;
         headersToExclude?: string[];
         fetchOptions?: RequestInit;
+        fetch?: typeof fetch;
     }) => Promise<import("./types/DAVTypes").DAVResponse[]>;
     todoMultiGet: (params: {
         url: string;
@@ -64,6 +65,7 @@ declare const _default: {
         headers?: Record<string, string>;
         headersToExclude?: string[];
         fetchOptions?: RequestInit;
+        fetch?: typeof fetch;
     }) => Promise<import("./types/DAVTypes").DAVResponse[]>;
     fetchTodos: (params: {
         calendar: import("./types/models").DAVCalendar;
@@ -79,6 +81,7 @@ declare const _default: {
         headersToExclude?: string[];
         useMultiGet?: boolean;
         fetchOptions?: RequestInit;
+        fetch?: typeof fetch;
     }) => Promise<import("./types/models").DAVCalendarObject[]>;
     createTodo: (params: {
         calendar: import("./types/models").DAVCalendar;
@@ -87,18 +90,21 @@ declare const _default: {
         headers?: Record<string, string>;
         headersToExclude?: string[];
         fetchOptions?: RequestInit;
+        fetch?: typeof fetch;
     }) => Promise<Response>;
     updateTodo: (params: {
         calendarObject: import("./types/models").DAVCalendarObject;
         headers?: Record<string, string>;
         headersToExclude?: string[];
         fetchOptions?: RequestInit;
+        fetch?: typeof fetch;
     }) => Promise<Response>;
     deleteTodo: (params: {
         calendarObject: import("./types/models").DAVCalendarObject;
         headers?: Record<string, string>;
         headersToExclude?: string[];
         fetchOptions?: RequestInit;
+        fetch?: typeof fetch;
     }) => Promise<Response>;
     fetchCalendarUserAddresses: (params: {
         account: import("./types/models").DAVAccount;
@@ -659,6 +665,7 @@ declare const _default: {
             headers?: Record<string, string>;
             headersToExclude?: string[];
             fetchOptions?: RequestInit;
+            fetch?: typeof fetch;
         }) => Promise<import("./types/DAVTypes").DAVResponse[]>;
         todoMultiGet: (params: {
             url: string;
@@ -670,6 +677,7 @@ declare const _default: {
             headers?: Record<string, string>;
             headersToExclude?: string[];
             fetchOptions?: RequestInit;
+            fetch?: typeof fetch;
         }) => Promise<import("./types/DAVTypes").DAVResponse[]>;
         fetchTodos: (params: {
             calendar: import("./types/models").DAVCalendar;
@@ -685,6 +693,7 @@ declare const _default: {
             headersToExclude?: string[];
             useMultiGet?: boolean;
             fetchOptions?: RequestInit;
+            fetch?: typeof fetch;
         }) => Promise<import("./types/models").DAVObject[]>;
         createTodo: (params: {
             calendar: import("./types/models").DAVCalendar;
@@ -693,18 +702,21 @@ declare const _default: {
             headers?: Record<string, string>;
             headersToExclude?: string[];
             fetchOptions?: RequestInit;
+            fetch?: typeof fetch;
         }) => Promise<Response>;
         updateTodo: (params: {
             calendarObject: import("./types/models").DAVCalendarObject;
             headers?: Record<string, string>;
             headersToExclude?: string[];
             fetchOptions?: RequestInit;
+            fetch?: typeof fetch;
         }) => Promise<Response>;
         deleteTodo: (params: {
             calendarObject: import("./types/models").DAVCalendarObject;
             headers?: Record<string, string>;
             headersToExclude?: string[];
             fetchOptions?: RequestInit;
+            fetch?: typeof fetch;
         }) => Promise<Response>;
     }>;
     DAVClient: typeof client.DAVClient;

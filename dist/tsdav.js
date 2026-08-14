@@ -10702,10 +10702,11 @@ const buildExpandProp = (timeRange) => ({
  * @param params.headers - Request headers
  * @param params.headersToExclude - Headers to exclude
  * @param params.fetchOptions - Fetch options
+ * @param params.fetch - Optional fetch implementation to use instead of the default
  * @returns Array of DAV responses
  */
 const todoQuery = async (params) => {
-    const { url, props, filters, timezone, depth, headers, headersToExclude, fetchOptions = {}, } = params;
+    const { url, props, filters, timezone, depth, headers, headersToExclude, fetchOptions = {}, fetch: fetchOverride, } = params;
     return collectionQuery({
         url,
         body: {
@@ -10725,6 +10726,7 @@ const todoQuery = async (params) => {
         depth,
         headers: excludeHeaders(headers, headersToExclude),
         fetchOptions,
+        fetch: fetchOverride,
     });
 };
 /**
@@ -10739,10 +10741,11 @@ const todoQuery = async (params) => {
  * @param params.headers - Request headers
  * @param params.headersToExclude - Headers to exclude
  * @param params.fetchOptions - Fetch options
+ * @param params.fetch - Optional fetch implementation to use instead of the default
  * @returns Array of DAV responses
  */
 const todoMultiGet = async (params) => {
-    const { url, props, objectUrls, filters, timezone, depth, headers, headersToExclude, fetchOptions = {}, } = params;
+    const { url, props, objectUrls, filters, timezone, depth, headers, headersToExclude, fetchOptions = {}, fetch: fetchOverride, } = params;
     return collectionQuery({
         url,
         body: {
@@ -10758,6 +10761,7 @@ const todoMultiGet = async (params) => {
         depth,
         headers: excludeHeaders(headers, headersToExclude),
         fetchOptions,
+        fetch: fetchOverride,
     });
 };
 /**
@@ -10773,11 +10777,12 @@ const todoMultiGet = async (params) => {
  * @param params.headersToExclude - Headers to exclude
  * @param params.useMultiGet - Whether to use multiget (default: true)
  * @param params.fetchOptions - Fetch options
+ * @param params.fetch - Optional fetch implementation to use instead of the default
  * @returns Array of todo objects with url, etag, and iCalendar data
  * @throws Error if calendar URL is missing or timeRange format is invalid
  */
 const fetchTodos = async (params) => {
-    const { calendar, objectUrls, filters: customFilters, timeRange, headers, expand, urlFilter = defaultIcsFilter, useMultiGet = true, headersToExclude, fetchOptions = {}, } = params;
+    const { calendar, objectUrls, filters: customFilters, timeRange, headers, expand, urlFilter = defaultIcsFilter, useMultiGet = true, headersToExclude, fetchOptions = {}, fetch: fetchOverride, } = params;
     if (timeRange) {
         validateISO8601TimeRange(timeRange.start, timeRange.end);
     }
@@ -10834,6 +10839,7 @@ const fetchTodos = async (params) => {
         depth: '1',
         headers: excludeHeaders(headers, headersToExclude),
         fetchOptions,
+        fetch: fetchOverride,
     })).map((res) => { var _a; return (_a = res.href) !== null && _a !== void 0 ? _a : ''; }))
         .map((url) => (url.startsWith('http') || !url ? url : new URL(url, calendar.url).href))
         .filter(urlFilter)
@@ -10853,6 +10859,7 @@ const fetchTodos = async (params) => {
                 depth: '1',
                 headers: excludeHeaders(headers, headersToExclude),
                 fetchOptions,
+                fetch: fetchOverride,
             });
         }
         else {
@@ -10868,6 +10875,7 @@ const fetchTodos = async (params) => {
                 depth: '1',
                 headers: excludeHeaders(headers, headersToExclude),
                 fetchOptions,
+                fetch: fetchOverride,
             });
         }
     }
@@ -10889,11 +10897,12 @@ const fetchTodos = async (params) => {
  * @param params.headers - Request headers
  * @param params.headersToExclude - Headers to exclude
  * @param params.fetchOptions - Fetch options
+ * @param params.fetch - Optional fetch implementation to use instead of the default
  * @returns Response from the server
  * @throws Error if iCalString does not contain a UID
  */
 const createTodo = async (params) => {
-    const { calendar, iCalString, filename, headers, headersToExclude, fetchOptions = {} } = params;
+    const { calendar, iCalString, filename, headers, headersToExclude, fetchOptions = {}, fetch: fetchOverride, } = params;
     if (!iCalString.includes('UID:')) {
         throw new Error('iCalString must contain a UID');
     }
@@ -10906,6 +10915,7 @@ const createTodo = async (params) => {
             ...headers,
         }, headersToExclude),
         fetchOptions,
+        fetch: fetchOverride,
     });
 };
 /**
@@ -10915,11 +10925,12 @@ const createTodo = async (params) => {
  * @param params.headers - Request headers
  * @param params.headersToExclude - Headers to exclude
  * @param params.fetchOptions - Fetch options
+ * @param params.fetch - Optional fetch implementation to use instead of the default
  * @returns Response from the server
  * @throws Error if calendarObject does not have an etag
  */
 const updateTodo = async (params) => {
-    const { calendarObject, headers, headersToExclude, fetchOptions = {} } = params;
+    const { calendarObject, headers, headersToExclude, fetchOptions = {}, fetch: fetchOverride, } = params;
     if (!calendarObject.etag) {
         throw new Error('calendarObject must have etag for update - fetch todo first');
     }
@@ -10932,6 +10943,7 @@ const updateTodo = async (params) => {
             ...headers,
         }, headersToExclude),
         fetchOptions,
+        fetch: fetchOverride,
     });
 };
 /**
@@ -10941,15 +10953,17 @@ const updateTodo = async (params) => {
  * @param params.headers - Request headers
  * @param params.headersToExclude - Headers to exclude
  * @param params.fetchOptions - Fetch options
+ * @param params.fetch - Optional fetch implementation to use instead of the default
  * @returns Response from the server
  */
 const deleteTodo = async (params) => {
-    const { calendarObject, headers, headersToExclude, fetchOptions = {} } = params;
+    const { calendarObject, headers, headersToExclude, fetchOptions = {}, fetch: fetchOverride, } = params;
     return deleteObject({
         url: calendarObject.url,
         etag: calendarObject.etag,
         headers: excludeHeaders(headers, headersToExclude),
         fetchOptions,
+        fetch: fetchOverride,
     });
 };
 
@@ -11439,12 +11453,30 @@ const createDAVClient = async (params) => {
         fetch: fetchOverride,
     });
     // todo
-    const todoQuery$1 = defaultParam(todoQuery, { headers: authHeaders });
-    const todoMultiGet$1 = defaultParam(todoMultiGet, { headers: authHeaders });
-    const fetchTodos$1 = defaultParam(fetchTodos, { headers: authHeaders });
-    const createTodo$1 = defaultParam(createTodo, { headers: authHeaders });
-    const updateTodo$1 = defaultParam(updateTodo, { headers: authHeaders });
-    const deleteTodo$1 = defaultParam(deleteTodo, { headers: authHeaders });
+    const todoQuery$1 = defaultParam(todoQuery, {
+        headers: authHeaders,
+        fetch: fetchOverride,
+    });
+    const todoMultiGet$1 = defaultParam(todoMultiGet, {
+        headers: authHeaders,
+        fetch: fetchOverride,
+    });
+    const fetchTodos$1 = defaultParam(fetchTodos, {
+        headers: authHeaders,
+        fetch: fetchOverride,
+    });
+    const createTodo$1 = defaultParam(createTodo, {
+        headers: authHeaders,
+        fetch: fetchOverride,
+    });
+    const updateTodo$1 = defaultParam(updateTodo, {
+        headers: authHeaders,
+        fetch: fetchOverride,
+    });
+    const deleteTodo$1 = defaultParam(deleteTodo, {
+        headers: authHeaders,
+        fetch: fetchOverride,
+    });
     return {
         davRequest: davRequest$1,
         propfind: propfind$1,
@@ -11763,22 +11795,46 @@ class DAVClient {
         })(params[0]);
     }
     async todoQuery(...params) {
-        return defaultParam(todoQuery, { headers: this.authHeaders, fetchOptions: this.fetchOptions })(params[0]);
+        return defaultParam(todoQuery, {
+            headers: this.authHeaders,
+            fetchOptions: this.fetchOptions,
+            fetch: this.fetchOverride,
+        })(params[0]);
     }
     async todoMultiGet(...params) {
-        return defaultParam(todoMultiGet, { headers: this.authHeaders, fetchOptions: this.fetchOptions })(params[0]);
+        return defaultParam(todoMultiGet, {
+            headers: this.authHeaders,
+            fetchOptions: this.fetchOptions,
+            fetch: this.fetchOverride,
+        })(params[0]);
     }
     async fetchTodos(...params) {
-        return defaultParam(fetchTodos, { headers: this.authHeaders, fetchOptions: this.fetchOptions })(params[0]);
+        return defaultParam(fetchTodos, {
+            headers: this.authHeaders,
+            fetchOptions: this.fetchOptions,
+            fetch: this.fetchOverride,
+        })(params[0]);
     }
     async createTodo(...params) {
-        return defaultParam(createTodo, { headers: this.authHeaders, fetchOptions: this.fetchOptions })(params[0]);
+        return defaultParam(createTodo, {
+            headers: this.authHeaders,
+            fetchOptions: this.fetchOptions,
+            fetch: this.fetchOverride,
+        })(params[0]);
     }
     async updateTodo(...params) {
-        return defaultParam(updateTodo, { headers: this.authHeaders, fetchOptions: this.fetchOptions })(params[0]);
+        return defaultParam(updateTodo, {
+            headers: this.authHeaders,
+            fetchOptions: this.fetchOptions,
+            fetch: this.fetchOverride,
+        })(params[0]);
     }
     async deleteTodo(...params) {
-        return defaultParam(deleteTodo, { headers: this.authHeaders, fetchOptions: this.fetchOptions })(params[0]);
+        return defaultParam(deleteTodo, {
+            headers: this.authHeaders,
+            fetchOptions: this.fetchOptions,
+            fetch: this.fetchOverride,
+        })(params[0]);
     }
 }
 

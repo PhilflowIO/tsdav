@@ -41,6 +41,7 @@ const buildExpandProp = (timeRange: { start: string; end: string }): ElementComp
  * @param params.headers - Request headers
  * @param params.headersToExclude - Headers to exclude
  * @param params.fetchOptions - Fetch options
+ * @param params.fetch - Optional fetch implementation to use instead of the default
  * @returns Array of DAV responses
  */
 export const todoQuery = async (params: {
@@ -52,6 +53,7 @@ export const todoQuery = async (params: {
   headers?: Record<string, string>;
   headersToExclude?: string[];
   fetchOptions?: RequestInit;
+  fetch?: typeof fetch;
 }): Promise<DAVResponse[]> => {
   const {
     url,
@@ -62,6 +64,7 @@ export const todoQuery = async (params: {
     headers,
     headersToExclude,
     fetchOptions = {},
+    fetch: fetchOverride,
   } = params;
   return collectionQuery({
     url,
@@ -82,6 +85,7 @@ export const todoQuery = async (params: {
     depth,
     headers: excludeHeaders(headers, headersToExclude),
     fetchOptions,
+    fetch: fetchOverride,
   });
 };
 
@@ -97,6 +101,7 @@ export const todoQuery = async (params: {
  * @param params.headers - Request headers
  * @param params.headersToExclude - Headers to exclude
  * @param params.fetchOptions - Fetch options
+ * @param params.fetch - Optional fetch implementation to use instead of the default
  * @returns Array of DAV responses
  */
 export const todoMultiGet = async (params: {
@@ -109,6 +114,7 @@ export const todoMultiGet = async (params: {
   headers?: Record<string, string>;
   headersToExclude?: string[];
   fetchOptions?: RequestInit;
+  fetch?: typeof fetch;
 }): Promise<DAVResponse[]> => {
   const {
     url,
@@ -120,6 +126,7 @@ export const todoMultiGet = async (params: {
     headers,
     headersToExclude,
     fetchOptions = {},
+    fetch: fetchOverride,
   } = params;
   return collectionQuery({
     url,
@@ -136,6 +143,7 @@ export const todoMultiGet = async (params: {
     depth,
     headers: excludeHeaders(headers, headersToExclude),
     fetchOptions,
+    fetch: fetchOverride,
   });
 };
 
@@ -152,6 +160,7 @@ export const todoMultiGet = async (params: {
  * @param params.headersToExclude - Headers to exclude
  * @param params.useMultiGet - Whether to use multiget (default: true)
  * @param params.fetchOptions - Fetch options
+ * @param params.fetch - Optional fetch implementation to use instead of the default
  * @returns Array of todo objects with url, etag, and iCalendar data
  * @throws Error if calendar URL is missing or timeRange format is invalid
  */
@@ -166,6 +175,7 @@ export const fetchTodos = async (params: {
   headersToExclude?: string[];
   useMultiGet?: boolean;
   fetchOptions?: RequestInit;
+  fetch?: typeof fetch;
 }): Promise<DAVCalendarObject[]> => {
   const {
     calendar,
@@ -178,6 +188,7 @@ export const fetchTodos = async (params: {
     useMultiGet = true,
     headersToExclude,
     fetchOptions = {},
+    fetch: fetchOverride,
   } = params;
 
   if (timeRange) {
@@ -246,6 +257,7 @@ export const fetchTodos = async (params: {
         depth: '1',
         headers: excludeHeaders(headers, headersToExclude),
         fetchOptions,
+        fetch: fetchOverride,
       })
     ).map((res) => res.href ?? '')
   )
@@ -269,6 +281,7 @@ export const fetchTodos = async (params: {
         depth: '1',
         headers: excludeHeaders(headers, headersToExclude),
         fetchOptions,
+        fetch: fetchOverride,
       });
     } else {
       todoObjectResults = await todoMultiGet({
@@ -283,6 +296,7 @@ export const fetchTodos = async (params: {
         depth: '1',
         headers: excludeHeaders(headers, headersToExclude),
         fetchOptions,
+        fetch: fetchOverride,
       });
     }
   }
@@ -303,6 +317,7 @@ export const fetchTodos = async (params: {
  * @param params.headers - Request headers
  * @param params.headersToExclude - Headers to exclude
  * @param params.fetchOptions - Fetch options
+ * @param params.fetch - Optional fetch implementation to use instead of the default
  * @returns Response from the server
  * @throws Error if iCalString does not contain a UID
  */
@@ -313,8 +328,17 @@ export const createTodo = async (params: {
   headers?: Record<string, string>;
   headersToExclude?: string[];
   fetchOptions?: RequestInit;
+  fetch?: typeof fetch;
 }): Promise<Response> => {
-  const { calendar, iCalString, filename, headers, headersToExclude, fetchOptions = {} } = params;
+  const {
+    calendar,
+    iCalString,
+    filename,
+    headers,
+    headersToExclude,
+    fetchOptions = {},
+    fetch: fetchOverride,
+  } = params;
 
   if (!iCalString.includes('UID:')) {
     throw new Error('iCalString must contain a UID');
@@ -332,6 +356,7 @@ export const createTodo = async (params: {
       headersToExclude,
     ),
     fetchOptions,
+    fetch: fetchOverride,
   });
 };
 
@@ -342,6 +367,7 @@ export const createTodo = async (params: {
  * @param params.headers - Request headers
  * @param params.headersToExclude - Headers to exclude
  * @param params.fetchOptions - Fetch options
+ * @param params.fetch - Optional fetch implementation to use instead of the default
  * @returns Response from the server
  * @throws Error if calendarObject does not have an etag
  */
@@ -350,8 +376,15 @@ export const updateTodo = async (params: {
   headers?: Record<string, string>;
   headersToExclude?: string[];
   fetchOptions?: RequestInit;
+  fetch?: typeof fetch;
 }): Promise<Response> => {
-  const { calendarObject, headers, headersToExclude, fetchOptions = {} } = params;
+  const {
+    calendarObject,
+    headers,
+    headersToExclude,
+    fetchOptions = {},
+    fetch: fetchOverride,
+  } = params;
 
   if (!calendarObject.etag) {
     throw new Error('calendarObject must have etag for update - fetch todo first');
@@ -369,6 +402,7 @@ export const updateTodo = async (params: {
       headersToExclude,
     ),
     fetchOptions,
+    fetch: fetchOverride,
   });
 };
 
@@ -379,6 +413,7 @@ export const updateTodo = async (params: {
  * @param params.headers - Request headers
  * @param params.headersToExclude - Headers to exclude
  * @param params.fetchOptions - Fetch options
+ * @param params.fetch - Optional fetch implementation to use instead of the default
  * @returns Response from the server
  */
 export const deleteTodo = async (params: {
@@ -386,12 +421,20 @@ export const deleteTodo = async (params: {
   headers?: Record<string, string>;
   headersToExclude?: string[];
   fetchOptions?: RequestInit;
+  fetch?: typeof fetch;
 }): Promise<Response> => {
-  const { calendarObject, headers, headersToExclude, fetchOptions = {} } = params;
+  const {
+    calendarObject,
+    headers,
+    headersToExclude,
+    fetchOptions = {},
+    fetch: fetchOverride,
+  } = params;
   return deleteObject({
     url: calendarObject.url,
     etag: calendarObject.etag,
     headers: excludeHeaders(headers, headersToExclude),
     fetchOptions,
+    fetch: fetchOverride,
   });
 };

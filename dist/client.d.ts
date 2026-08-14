@@ -277,6 +277,7 @@ export declare const createDAVClient: (params: {
         headers?: Record<string, string>;
         headersToExclude?: string[];
         fetchOptions?: RequestInit;
+        fetch?: typeof fetch;
     }) => Promise<DAVResponse[]>;
     todoMultiGet: (params: {
         url: string;
@@ -288,6 +289,7 @@ export declare const createDAVClient: (params: {
         headers?: Record<string, string>;
         headersToExclude?: string[];
         fetchOptions?: RequestInit;
+        fetch?: typeof fetch;
     }) => Promise<DAVResponse[]>;
     fetchTodos: (params: {
         calendar: DAVCalendar;
@@ -303,6 +305,7 @@ export declare const createDAVClient: (params: {
         headersToExclude?: string[];
         useMultiGet?: boolean;
         fetchOptions?: RequestInit;
+        fetch?: typeof fetch;
     }) => Promise<DAVObject[]>;
     createTodo: (params: {
         calendar: DAVCalendar;
@@ -311,18 +314,21 @@ export declare const createDAVClient: (params: {
         headers?: Record<string, string>;
         headersToExclude?: string[];
         fetchOptions?: RequestInit;
+        fetch?: typeof fetch;
     }) => Promise<Response>;
     updateTodo: (params: {
         calendarObject: DAVCalendarObject;
         headers?: Record<string, string>;
         headersToExclude?: string[];
         fetchOptions?: RequestInit;
+        fetch?: typeof fetch;
     }) => Promise<Response>;
     deleteTodo: (params: {
         calendarObject: DAVCalendarObject;
         headers?: Record<string, string>;
         headersToExclude?: string[];
         fetchOptions?: RequestInit;
+        fetch?: typeof fetch;
     }) => Promise<Response>;
 }>;
 export declare class DAVClient {
