@@ -691,7 +691,11 @@ export class DAVClient {
   async makeAddressBook(
     ...params: Parameters<typeof rawMakeAddressBook>
   ): Promise<DAVResponse[]> {
-    return defaultParam(rawMakeAddressBook, { headers: this.authHeaders, fetchOptions: this.fetchOptions })(params[0]);
+    return defaultParam(rawMakeAddressBook, {
+      headers: this.authHeaders,
+      fetchOptions: this.fetchOptions,
+      fetch: this.fetchOverride,
+    })(params[0]);
   }
 
   async fetchAddressBooks(

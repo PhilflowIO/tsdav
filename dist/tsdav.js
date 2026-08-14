@@ -10003,7 +10003,7 @@ const deleteVCard = async (params) => {
     });
 };
 const makeAddressBook = async (params) => {
-    const { url, props, depth, headers, headersToExclude, fetchOptions = {} } = params;
+    const { url, props, depth, headers, headersToExclude, fetchOptions = {}, fetch: fetchOverride, } = params;
     return davRequest({
         url,
         init: {
@@ -10025,6 +10025,7 @@ const makeAddressBook = async (params) => {
                 : undefined,
         },
         fetchOptions,
+        fetch: fetchOverride,
     });
 };
 
@@ -11719,7 +11720,11 @@ class DAVClient {
         })(params[0]);
     }
     async makeAddressBook(...params) {
-        return defaultParam(makeAddressBook, { headers: this.authHeaders, fetchOptions: this.fetchOptions })(params[0]);
+        return defaultParam(makeAddressBook, {
+            headers: this.authHeaders,
+            fetchOptions: this.fetchOptions,
+            fetch: this.fetchOverride,
+        })(params[0]);
     }
     async fetchAddressBooks(...params) {
         return defaultParam(fetchAddressBooks, {

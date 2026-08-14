@@ -268,6 +268,7 @@ declare const _default: {
         headers?: Record<string, string>;
         headersToExclude?: string[];
         fetchOptions?: RequestInit;
+        fetch?: typeof fetch;
     }) => Promise<import("./types/DAVTypes").DAVResponse[]>;
     serviceDiscovery: (params: {
         account: import("./types/models").DAVAccount;
@@ -614,6 +615,7 @@ declare const _default: {
             headers?: Record<string, string>;
             headersToExclude?: string[];
             fetchOptions?: RequestInit;
+            fetch?: typeof fetch;
         }) => Promise<import("./types/DAVTypes").DAVResponse[]>;
         fetchVCards: (params: {
             addressBook: import("./types/models").DAVAddressBook;

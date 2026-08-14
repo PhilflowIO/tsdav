@@ -254,6 +254,7 @@ declare const makeAddressBook: (params: {
     headers?: Record<string, string>;
     headersToExclude?: string[];
     fetchOptions?: RequestInit;
+    fetch?: typeof fetch;
 }) => Promise<DAVResponse[]>;
 
 declare const fetchCalendarUserAddresses: (params: {
@@ -812,6 +813,7 @@ declare const createDAVClient: (params: {
         headers?: Record<string, string>;
         headersToExclude?: string[];
         fetchOptions?: RequestInit;
+        fetch?: typeof fetch;
     }) => Promise<DAVResponse[]>;
     fetchVCards: (params: {
         addressBook: DAVAddressBook;
@@ -1291,6 +1293,7 @@ declare const _default: {
         headers?: Record<string, string>;
         headersToExclude?: string[];
         fetchOptions?: RequestInit;
+        fetch?: typeof fetch;
     }) => Promise<DAVResponse[]>;
     serviceDiscovery: (params: {
         account: DAVAccount;
@@ -1637,6 +1640,7 @@ declare const _default: {
             headers?: Record<string, string>;
             headersToExclude?: string[];
             fetchOptions?: RequestInit;
+            fetch?: typeof fetch;
         }) => Promise<DAVResponse[]>;
         fetchVCards: (params: {
             addressBook: DAVAddressBook;
