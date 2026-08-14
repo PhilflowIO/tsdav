@@ -823,10 +823,7 @@ const makeAddressBook = async (params) => {
             body: props
                 ? {
                     mkcol: {
-                        _attributes: getDAVAttribute([
-                            exports.DAVNamespace.DAV,
-                            exports.DAVNamespace.CARDDAV,
-                        ]),
+                        _attributes: getDAVAttribute([exports.DAVNamespace.DAV, exports.DAVNamespace.CARDDAV]),
                         set: {
                             prop: props,
                         },
