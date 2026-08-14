@@ -332,8 +332,17 @@ export const makeAddressBook = async (params: {
   headers?: Record<string, string>;
   headersToExclude?: string[];
   fetchOptions?: RequestInit;
+  fetch?: typeof fetch;
 }): Promise<DAVResponse[]> => {
-  const { url, props, depth, headers, headersToExclude, fetchOptions = {} } = params;
+  const {
+    url,
+    props,
+    depth,
+    headers,
+    headersToExclude,
+    fetchOptions = {},
+    fetch: fetchOverride,
+  } = params;
   return davRequest({
     url,
     init: {
@@ -355,5 +364,6 @@ export const makeAddressBook = async (params: {
         : undefined,
     },
     fetchOptions,
+    fetch: fetchOverride,
   });
 };

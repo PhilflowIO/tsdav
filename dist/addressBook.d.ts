@@ -69,4 +69,5 @@ export declare const makeAddressBook: (params: {
     headers?: Record<string, string>;
     headersToExclude?: string[];
     fetchOptions?: RequestInit;
+    fetch?: typeof fetch;
 }) => Promise<DAVResponse[]>;

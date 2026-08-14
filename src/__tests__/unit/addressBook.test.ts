@@ -1,4 +1,4 @@
-import { fetchVCards } from '../../addressBook';
+import { fetchVCards, makeAddressBook } from '../../addressBook';
 import * as request from '../../request';
 
 jest.mock('../../request');
@@ -101,5 +101,34 @@ describe('fetchVCards', () => {
     const multiGetCall = mockedDavRequest.mock.calls[1][0];
     const hrefs = multiGetCall.init.body['addressbook-multiget']['d:href'];
     expect(hrefs).toEqual(['/user/addr/card1.vcf']);
+  });
+});
+
+describe('makeAddressBook', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockedDavRequest.mockResolvedValue([]);
+  });
+
+  it('should forward a custom fetch to davRequest', async () => {
+    const customFetch = jest.fn() as unknown as typeof fetch;
+
+    await makeAddressBook({
+      url: 'http://example.com/user/addr/',
+      props: {},
+      fetch: customFetch,
+    });
+
+    expect(mockedDavRequest).toHaveBeenCalledTimes(1);
+    expect(mockedDavRequest.mock.calls[0][0].fetch).toBe(customFetch);
+  });
+
+  it('should leave fetch undefined when no override is given', async () => {
+    await makeAddressBook({
+      url: 'http://example.com/user/addr/',
+      props: {},
+    });
+
+    expect(mockedDavRequest.mock.calls[0][0].fetch).toBeUndefined();
   });
 });
