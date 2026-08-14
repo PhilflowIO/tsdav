@@ -12,6 +12,7 @@ import { DAVCalendar, DAVCalendarObject } from './types/models';
  * @param params.headers - Request headers
  * @param params.headersToExclude - Headers to exclude
  * @param params.fetchOptions - Fetch options
+ * @param params.fetch - Optional fetch implementation to use instead of the default
  * @returns Array of DAV responses
  */
 export declare const todoQuery: (params: {
@@ -23,6 +24,7 @@ export declare const todoQuery: (params: {
     headers?: Record<string, string>;
     headersToExclude?: string[];
     fetchOptions?: RequestInit;
+    fetch?: typeof fetch;
 }) => Promise<DAVResponse[]>;
 /**
  * Fetch multiple todos by URL using CalDAV calendar-multiget
@@ -36,6 +38,7 @@ export declare const todoQuery: (params: {
  * @param params.headers - Request headers
  * @param params.headersToExclude - Headers to exclude
  * @param params.fetchOptions - Fetch options
+ * @param params.fetch - Optional fetch implementation to use instead of the default
  * @returns Array of DAV responses
  */
 export declare const todoMultiGet: (params: {
@@ -48,6 +51,7 @@ export declare const todoMultiGet: (params: {
     headers?: Record<string, string>;
     headersToExclude?: string[];
     fetchOptions?: RequestInit;
+    fetch?: typeof fetch;
 }) => Promise<DAVResponse[]>;
 /**
  * Fetch VTODO objects from a CalDAV calendar with optional filtering
@@ -62,6 +66,7 @@ export declare const todoMultiGet: (params: {
  * @param params.headersToExclude - Headers to exclude
  * @param params.useMultiGet - Whether to use multiget (default: true)
  * @param params.fetchOptions - Fetch options
+ * @param params.fetch - Optional fetch implementation to use instead of the default
  * @returns Array of todo objects with url, etag, and iCalendar data
  * @throws Error if calendar URL is missing or timeRange format is invalid
  */
@@ -79,6 +84,7 @@ export declare const fetchTodos: (params: {
     headersToExclude?: string[];
     useMultiGet?: boolean;
     fetchOptions?: RequestInit;
+    fetch?: typeof fetch;
 }) => Promise<DAVCalendarObject[]>;
 /**
  * Create a new VTODO object in a CalDAV calendar
@@ -89,6 +95,7 @@ export declare const fetchTodos: (params: {
  * @param params.headers - Request headers
  * @param params.headersToExclude - Headers to exclude
  * @param params.fetchOptions - Fetch options
+ * @param params.fetch - Optional fetch implementation to use instead of the default
  * @returns Response from the server
  * @throws Error if iCalString does not contain a UID
  */
@@ -99,6 +106,7 @@ export declare const createTodo: (params: {
     headers?: Record<string, string>;
     headersToExclude?: string[];
     fetchOptions?: RequestInit;
+    fetch?: typeof fetch;
 }) => Promise<Response>;
 /**
  * Update an existing VTODO object in a CalDAV calendar
@@ -107,6 +115,7 @@ export declare const createTodo: (params: {
  * @param params.headers - Request headers
  * @param params.headersToExclude - Headers to exclude
  * @param params.fetchOptions - Fetch options
+ * @param params.fetch - Optional fetch implementation to use instead of the default
  * @returns Response from the server
  * @throws Error if calendarObject does not have an etag
  */
@@ -115,6 +124,7 @@ export declare const updateTodo: (params: {
     headers?: Record<string, string>;
     headersToExclude?: string[];
     fetchOptions?: RequestInit;
+    fetch?: typeof fetch;
 }) => Promise<Response>;
 /**
  * Delete a VTODO object from a CalDAV calendar
@@ -123,6 +133,7 @@ export declare const updateTodo: (params: {
  * @param params.headers - Request headers
  * @param params.headersToExclude - Headers to exclude
  * @param params.fetchOptions - Fetch options
+ * @param params.fetch - Optional fetch implementation to use instead of the default
  * @returns Response from the server
  */
 export declare const deleteTodo: (params: {
@@ -130,4 +141,5 @@ export declare const deleteTodo: (params: {
     headers?: Record<string, string>;
     headersToExclude?: string[];
     fetchOptions?: RequestInit;
+    fetch?: typeof fetch;
 }) => Promise<Response>;
