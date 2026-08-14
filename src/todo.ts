@@ -202,10 +202,7 @@ export const fetchTodos = async (params: {
       throw new Error('cannot fetchTodos for undefined calendar');
     }
     throw new Error(
-      `calendar must have ${findMissingFieldNames(
-        calendar,
-        requiredFields,
-      )} before fetchTodos`,
+      `calendar must have ${findMissingFieldNames(calendar, requiredFields)} before fetchTodos`,
     );
   }
 

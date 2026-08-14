@@ -60,14 +60,7 @@ export {
   makeAddressBook,
 } from './addressBook';
 
-export {
-  todoQuery,
-  todoMultiGet,
-  fetchTodos,
-  createTodo,
-  updateTodo,
-  deleteTodo,
-} from './todo';
+export { todoQuery, todoMultiGet, fetchTodos, createTodo, updateTodo, deleteTodo } from './todo';
 
 export {
   getBasicAuthHeaders,
