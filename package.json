@@ -1,6 +1,6 @@
 {
   "name": "tsdav",
-  "version": "2.3.0",
+  "version": "2.3.1",
   "description": "WebDAV, CALDAV, and CARDDAV client for Nodejs and the Browser",
   "keywords": [
     "dav",
@@ -31,7 +31,7 @@
     "package.json"
   ],
   "scripts": {
-    "build": "pnpm -s clean && rollup -c rollup.config.mjs && copyfiles package.json LICENSE README.md ./dist && rimraf ./dist/ts",
+    "build": "rimraf dist* && rollup -c rollup.config.mjs && copyfiles package.json LICENSE README.md ./dist && rimraf ./dist/ts",
     "lint": "eslint --ext .ts,.tsx src --ignore-pattern src/__tests__ --ignore-pattern src/util/__tests__",
     "clean": "rimraf dist*",
     "prepublishOnly": "pnpm build",
@@ -45,7 +45,7 @@
     "test:zoho": "jest --testPathPatterns=src/__tests__/integration/zoho --runInBand",
     "typecheck": "tsc --noEmit",
     "watch": "tsc --watch --outDir ./dist",
-    "prepare": "husky"
+    "prepare": "husky && npm run build"
   },
   "dependencies": {
     "base-64": "1.0.0",
