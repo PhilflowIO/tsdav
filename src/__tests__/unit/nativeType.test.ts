@@ -1,3 +1,4 @@
+import { test, expect } from 'vitest';
 import { nativeType } from '../../util/nativeType';
 
 test('nativeType should be able to handle numbers', () => {

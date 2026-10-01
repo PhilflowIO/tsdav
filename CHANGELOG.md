@@ -1,23 +1,196 @@
-## [Unreleased]
+## v2.3.5-philflow.1 (PhilflowIO fork)
+
+Upstream v2.3.5 merged into the fork. Fork-only additions on top of upstream:
+
+**features**
+- VTODO (tasks/reminders) API: `todoQuery`, `todoMultiGet`, `fetchTodos`, `createTodo`, `updateTodo`, `deleteTodo`, exposed on `DAVClient` and `createDAVClient`
+- `makeAddressBook` (CardDAV MKCOL), exposed on `DAVClient` and `createDAVClient`
+
+##### bug fixes
+- honour the `fetch` override in `makeAddressBook` and in the todo API
+- caller-supplied `headers` no longer replace the client's auth headers (fixed upstream in v2.3.5, regression test added in the fork)
+
+##### build
+- `prepare` rebuilds `dist/` so git-URL installs get a fresh build; `dist/` stays committed and CI verifies it against a fresh build
+
+## v2.3.5
+
+##### bug fixes
+
+- resolve relative discovery redirects against the request URL; thanks to [@bensynapse](https://github.com/bensynapse) for [#281](https://github.com/natelindev/tsdav/pull/281)
+- preserve redirect origins and explicit ports, and remove request bodies from discovery's GET fallback
+- preserve opaque DAV XML values as strings, mixed text/CDATA ordering, namespaces, and property status details while retaining `xml-js`
+- preserve complete successful raw responses, including large free/busy payloads
+- reject failed or incomplete discovery, object retrieval, and sync responses before calculating deletions or advancing sync state
+- include tasks, journals, and extensionless resources in collection synchronization, preserve REPORT sync tokens, and retain unchanged local objects
+- refresh expired OAuth credentials before requests through both client APIs, deduplicate concurrent refreshes, and stop DAV requests when refresh fails
+- apply header exclusions after merging all request headers and respect CardDAV object URL filters when multi-get is disabled
+- require a time range when expanding calendar recurrences, correct client sync return types, and bind multi-get callbacks to the client
+- restrict package cleanup to the `dist` directory
+
+##### improvements
+
+- export `makeCollection` and the `DAVPropStat` type, and replace repeated sync URL scans with indexed comparisons
+- correct browser, synchronization, iCalendar import, authentication, and response documentation; preserve recurrence exceptions, timezones, all-day events, and escaping in the feed-import example
+- replace executable input in the docs XML converter with JSON parsing and share the library's XML normalizer
+- derive the documentation version from the package and verify executable examples, public consumer types, dependency usage, and fresh package artifacts in CI and release checks
+
+##### security
+
+- remove unused direct dependencies and constrain vulnerable documentation transitive dependencies to fixed versions; root and documentation dependency audits report no known vulnerabilities at release verification
+
+## v2.3.4
+
+##### bug fixes
+
+- preserve custom XML attributes and namespaces on request root elements, and declare DAV namespaces when creating collections
+- resolve child resource URLs correctly for collections without trailing slashes, including URLs with query strings or fragments
+- accept CDATA and multiple href values during account discovery, and skip empty object hrefs before URL resolution
+- filter calendar-query results to the requested object URLs when multi-get is disabled
+- preserve bodyless requests when XML attributes are supplied and guard type helpers against null or undefined inputs
+- restore reproducible root and documentation installs by moving pnpm overrides into workspace configuration and synchronizing lockfiles
+
+##### improvements
+
+- expose freeBusyQuery on both client APIs and export additional account, request, constant, and sync type helpers
+- correct the calendar object retrieval documentation and add regression coverage for public exports, XML attributes, and URL handling
+
+## v2.3.3
+
+##### bug fixes
+
+- treat older Stalwart servers' empty calendar-query responses containing a collection-level 404 as no results, fixing [#278](https://github.com/natelindev/tsdav/issues/278); thanks to @josephsellers for [#279](https://github.com/natelindev/tsdav/pull/279)
+- restrict the workaround to calendar queries whose response href matches the queried collection, preserving missing-object errors, other REPORT failures, HTTP failures, and explicit DAV errors
+- add regression coverage for collection URL matching, CalDAV/CardDAV multi-get failures, and functional and class-based calendar object retrieval
+
+## v2.3.2
+
+##### bug fixes
+
+- reject failed WebDAV sync REPORTs and failed multi-get responses instead of returning a successful sync or advancing the sync token; object-level 404 responses still represent deletions
+- preserve new sync tokens from empty multistatus responses while retaining unchanged local objects
+- parse DAV response and property status codes when the server omits the reason phrase
+- correct the CI Node.js version matrix and verify the packaged library on Node.js 18 and 20 separately from the development toolchain
+
+##### improvements
+
+- update the package and documentation toolchains, including TypeScript 7, Vitest 5, Rolldown, Docusaurus, and React
+- update compiler configuration and contributor documentation for Node.js 22.12+ development; published runtime support remains Node.js >=18
+- add regression coverage for sync failures, empty sync responses, status parsing, and documentation image parsing, with docs tests and builds included in CI
+
+##### security
+
+- replace the documentation dependency `image-size` with the API-compatible `image-size-next@2.1.1`, fixing CVE-2025-71329 and CVE-2025-71330
+- constrain vulnerable transitive build and documentation dependencies to fixed versions; root and documentation dependency audits report no known vulnerabilities at release verification
+
+## v2.3.1
+
+##### bug fixes
+
+- fixed case-insensitive header merging across object, tuple, and `Headers` inputs so per-call overrides no longer discard client authentication or required request headers
+- fixed OAuth token requests ignoring client-level `fetchOptions`, and prevented generic fetch options from replacing required DAV methods and request bodies
+- fixed DAV XML handling for bodyless requests, mixed-case XML content types, missing response status lines, and failed `propstat` entries
+- fixed undefined ETags becoming the literal string `"undefined"` and prevented unsafe integers from being coerced while parsing DAV XML values
+- fixed DAV resource comparisons for relative URLs, trailing slashes, query strings, and similarly prefixed resource names
+- fixed calendar and collection sync losing unchanged local objects, using stale or missing sync state, and silently continuing without required fetch callbacks
+- fixed CalDAV/CardDAV multi-get requests dropping resource query strings
+- fixed invalid or reversed time ranges and empty free-busy responses returning misleading results
+- fixed native ESM package exports and expanded the default test scripts to include utility tests
+- fixed the Node.js 18 CI job to validate the packed runtime instead of invoking Node.js 20-only build and test tooling
+- fixed CI and release jobs declaring conflicting pnpm versions after the repository began pinning an exact `packageManager`
+
+##### improvements
+
+- upgraded compatible test, build, type, React, and Docusaurus dependencies to their latest safe releases
+- isolated the documentation package as its own pnpm workspace so installs, audits, and lockfile checks consistently target the docs dependency graph
+- enabled CI for direct `main` pushes so release commits are verified before publication
+- added regression tests for request handling, authentication, URL normalization, XML parsing, collection sync, calendar sync, and package entry points
+
+##### security
+
+- refreshed and constrained vulnerable documentation transitive dependencies; root and documentation production audits now report no known vulnerabilities
+
+## v2.3.0
+
+##### improvements
+
+- replaced the Rollup package build with Rolldown while preserving the existing public output filenames and package export map
+- kept the published library runtime support at Node.js >=18; building release artifacts from source now requires a Rolldown-supported Node.js version
+- reduced generated browser bundle size by relying on Rolldown's browser build instead of broad Node polyfill injection
+- removed the `base-64` dependency and kept Basic auth encoding portable across Node.js, browsers, Bun, Deno, and Workers
+- switched linting to Biome and tightened test/lint coverage for the source tree
+- updated runtime usage docs and routed the docs homepage directly to the maintained introduction page
+
+##### bug fixes
+
+- fixed the Apple/iCloud integration assertion for invalid CalDAV `timeRange` validation so the expected rejection is tested correctly
+
+## v2.2.2
+
+##### improvements
+
+- added `syncCalendarsDetailed` and `smartCollectionSyncDetailed` as explicit detailed-result APIs
+- deprecated `detailedResult` in favor of the new detailed sync functions while preserving backward-compatible overloads
+
+## v2.2.1
+
+##### bug fixes
+
+- fixed `fetchCalendars` rejecting calendar collections when servers omit or return an empty `supported-calendar-component-set` (Purelymail compatibility)
 
 ## v2.2.0
 
-**features**
-- VTODO (tasks/reminders) support
-  - `todoQuery` - Query todos with CalDAV filters
-  - `todoMultiGet` - Fetch multiple todos by URL
-  - `fetchTodos` - High-level API to fetch todos with filtering and timeRange support
-  - `createTodo` - Create new todo items with UID validation
-  - `updateTodo` - Update existing todos with etag validation
-  - `deleteTodo` - Delete todo items
-  - Integration tests for Radicale server
-  - Comprehensive API documentation
+##### features
+
+- first-class support for [Bun](https://bun.sh) and [Deno](https://deno.com) in addition to Node.js (>= 18), modern browsers, and Cloudflare Workers
+- added package `exports` map with `browser`, `deno`, `bun`, `worker`, `import`, `require`, and `default` conditions so each runtime picks the correct bundle automatically
+- added dedicated Bun and Deno smoke-test jobs to CI to guard both runtimes against regressions
+- added Bun and Deno usage guides to the docs
+
+##### breaking changes
+
+- dropped the `cross-fetch` runtime dependency. tsdav now uses the standards-compliant `fetch` exposed by every supported runtime (Node.js >= 18, browsers, Bun, Deno, Cloudflare Workers, Electron). Hosts without a global `fetch` must install a polyfill on `globalThis` before importing tsdav, or pass a custom `fetch` to `createDAVClient` / `DAVClient` / individual request helpers. Node < 18 is no longer supported (already documented in `engines.node`, now enforced at the code level).
+- added `exports` field to `package.json`. Deep subpath imports like `import 'tsdav/dist/tsdav.esm.js'` are no longer allowed; use the package root (`import ... from 'tsdav'`) instead.
+
+##### bug fixes
+
+- fixed `syncCalendars` dropping genuinely unchanged calendars from the non-`detailedResult` return; `unchanged` is now selected by matching sync-token/ctag instead of the inverted comparison
+- fixed `fetchCalendarUserAddresses` returning `[]` when the server responded with a single `<href>` element instead of an array
+- fixed `fetchCalendars` / `fetchAddressBooks` crashing on servers that omit `resourcetype` or return a single `<comp>` element (`Object.keys(undefined)` / bad dereference)
+- fixed `fetchHomeUrl` throwing an opaque `TypeError` when the server returned an empty `<calendar-home-set/>` or `<addressbook-home-set/>`; emits a descriptive error instead
+- fixed service discovery silently downgrading explicit `https://` redirects to `http://` when the origin was http; schemeless/relative redirects still inherit the endpoint's protocol
+- fixed service discovery's `redirect: 'manual'`, `method`, `headers`, and `body` being silently overridable by user-supplied `fetchOptions`
+- fixed `davRequest` crashing on non-multistatus XML responses (e.g. CalDAV `<error>` reports) with `Cannot read properties of undefined (reading 'response')`
+- fixed `davRequest` merging `Content-Type` case-insensitively so a user-supplied `content-type` no longer coexists with the library's `Content-Type`
+- fixed `davRequest`'s per-response `ok` flag: now derived from the parsed HTTP status (RFC 4918 propstat), not from presence of an `<error/>` element (which matched empty error stubs)
+- fixed `davRequest` capping the `raw` field on non-XML responses so oversized HTML error pages don't bloat thrown error messages or logs
+- fixed `excludeHeaders` comparing header names case-sensitively; HTTP headers are case-insensitive so `Authorization` and `authorization` are now treated as the same entry
+- fixed `nativeType` coercing empty strings, whitespace, and leading-zero tokens (e.g. `"0123"`) to numbers, which corrupted sync-tokens, etags, and ctags parsed from XML
+- fixed `camelCase` leaking stray separators on consecutive `-`/`_` runs (`foo--bar` now produces `fooBar`)
+- fixed `urlEquals` using a brittle bidirectional-`includes` with a length guard; now a strict trim + single-trailing-slash normalization
+- fixed `smartCollectionSync` (`basic` mode) wasting a `fetchObjects` call when the collection wasn't dirty; now short-circuits on `isDirty === false`
+- fixed `syncCalendars`'s `detailedResult: true` returning the bare `updated` calendar list without the fetched objects; both result shapes now return calendars with objects populated via `smartCollectionSync`
+- fixed `createDAVClient` (factory) silently ignoring `fetchOptions`; parameter added and threaded to every sub-helper
+- fixed `DAVClient#davRequest` dropping the per-call `fetchOptions` in favor of `this.fetchOptions`
+- fixed OAuth flows never persisting refreshed `accessToken` / rotated `refreshToken` / new `expiration` back onto the credentials object, causing repeat refreshes and stale rotating refresh tokens (Google)
+- fixed OAuth headers returning `Bearer undefined` when the in-memory `accessToken` was still valid; the existing token is now reused
+- fixed `authMethod: 'Custom'` silently authenticating with no headers when `authFunction` was omitted; now throws a clear error
+
+##### security
+
+- stopped logging the base64 basic-auth token and the OAuth access token under `DEBUG=tsdav:*`; debug output now references the username / emits status codes only
 
 ##### improvements
-- Added utility functions for ISO8601 validation and ICS filtering
-- Eliminated code duplication in expand prop building
-- Enhanced error handling with UID and etag validation
-- Added comprehensive edge case test coverage
+
+- removed several `as any` casts from `DAVClient` / `createDAVClient` so `fetch` and `fetchOptions` are properly typed (`typeof globalThis.fetch` / `RequestInit`)
+- `DAVClient#login` now accepts `{ loadCollections, loadObjects }` to pre-populate the default account in one call
+- `createAccount` (factory and class) now validates `accountType` at runtime and throws a clear error when both the passed account and `defaultAccountType` are missing it
+- `fetchVCards` default `urlFilter` now returns `boolean` instead of the url string
+- added `fetch?` to `DAVCollection.objectMultiGet` type so custom transports can be threaded through `smartCollectionSync`
+- added docusaurus-plugin-llms for LLM-friendly documentation
+- updated docs for LLM discoverability
+- fixed Vercel deployment configuration
+- fixed markdown integration for docs deployment
 
 ## v2.1.8
 

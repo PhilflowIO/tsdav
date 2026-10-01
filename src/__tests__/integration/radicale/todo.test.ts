@@ -1,3 +1,4 @@
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import fsp from 'fs/promises';
 
 import { createAccount } from '../../../account';
@@ -60,14 +61,14 @@ describe('VTODO operations', () => {
   });
 
   test('should create a todo', async () => {
-    let todoString = await fsp.readFile(
-      `${__dirname}/../data/vtodo/todo1.ics`,
-      'utf-8'
-    );
+    let todoString = await fsp.readFile(`${__dirname}/../data/vtodo/todo1.ics`, 'utf-8');
 
     // Make UID unique
     const uniqueId = `${Date.now()}-${Math.random().toString(36).substring(7)}`;
-    todoString = todoString.replace('UID:todo1-test@philflow.io', `UID:todo1-${uniqueId}@philflow.io`);
+    todoString = todoString.replace(
+      'UID:todo1-test@philflow.io',
+      `UID:todo1-${uniqueId}@philflow.io`,
+    );
 
     const filename = `test-todo-${uniqueId}.ics`;
     const response = await createTodo({
@@ -84,13 +85,13 @@ describe('VTODO operations', () => {
 
   test('should fetch todos from calendar', async () => {
     // Create a todo first
-    let todoString = await fsp.readFile(
-      `${__dirname}/../data/vtodo/todo2.ics`,
-      'utf-8'
-    );
+    let todoString = await fsp.readFile(`${__dirname}/../data/vtodo/todo2.ics`, 'utf-8');
 
     const uniqueId = `${Date.now()}-${Math.random().toString(36).substring(7)}`;
-    todoString = todoString.replace('UID:todo2-test@philflow.io', `UID:todo2-${uniqueId}@philflow.io`);
+    todoString = todoString.replace(
+      'UID:todo2-test@philflow.io',
+      `UID:todo2-${uniqueId}@philflow.io`,
+    );
 
     const filename = `test-fetch-todo-${uniqueId}.ics`;
     const createResponse = await createTodo({
@@ -126,13 +127,13 @@ describe('VTODO operations', () => {
 
   test('should update a todo', async () => {
     // Create a todo
-    let todoString = await fsp.readFile(
-      `${__dirname}/../data/vtodo/todo1.ics`,
-      'utf-8'
-    );
+    let todoString = await fsp.readFile(`${__dirname}/../data/vtodo/todo1.ics`, 'utf-8');
 
     const uniqueId = `${Date.now()}-${Math.random().toString(36).substring(7)}`;
-    todoString = todoString.replace('UID:todo1-test@philflow.io', `UID:todo1-${uniqueId}@philflow.io`);
+    todoString = todoString.replace(
+      'UID:todo1-test@philflow.io',
+      `UID:todo1-${uniqueId}@philflow.io`,
+    );
 
     const filename = `test-update-todo-${uniqueId}.ics`;
     const createResponse = await createTodo({
@@ -154,19 +155,14 @@ describe('VTODO operations', () => {
       headers: authHeaders,
     });
 
-    const createdTodo = todos.find((t) => t.url === todoUrl);
-    expect(createdTodo).toBeDefined();
-
-    const todo = createdTodo!;
+    const todo = todos.find((t) => t.url === todoUrl);
+    if (!todo) throw new Error(`created todo ${todoUrl} not found`);
 
     expect(todo.data).toBeDefined();
     expect(typeof todo.data).toBe('string');
 
     // Update the todo
-    const updatedData = todo.data.replace(
-      'SUMMARY:Test Todo 1',
-      'SUMMARY:Updated Test Todo 1'
-    );
+    const updatedData = todo.data.replace('SUMMARY:Test Todo 1', 'SUMMARY:Updated Test Todo 1');
 
     const updateResponse = await updateTodo({
       calendarObject: {
@@ -188,18 +184,18 @@ describe('VTODO operations', () => {
 
     const updatedTodo = allTodosAfterUpdate.find((t) => t.url === todoUrl);
     expect(updatedTodo).toBeDefined();
-    expect(updatedTodo!.data).toContain('Updated Test Todo 1');
+    expect(updatedTodo?.data).toContain('Updated Test Todo 1');
   });
 
   test('should delete a todo', async () => {
     // Create a todo
-    let todoString = await fsp.readFile(
-      `${__dirname}/../data/vtodo/todo3.ics`,
-      'utf-8'
-    );
+    let todoString = await fsp.readFile(`${__dirname}/../data/vtodo/todo3.ics`, 'utf-8');
 
     const uniqueId = `${Date.now()}-${Math.random().toString(36).substring(7)}`;
-    todoString = todoString.replace('UID:todo3-test@philflow.io', `UID:todo3-${uniqueId}@philflow.io`);
+    todoString = todoString.replace(
+      'UID:todo3-test@philflow.io',
+      `UID:todo3-${uniqueId}@philflow.io`,
+    );
 
     const filename = `test-delete-todo-${uniqueId}.ics`;
     const createResponse = await createTodo({
@@ -243,21 +239,21 @@ describe('VTODO operations', () => {
   });
 
   test('should handle multiple todos with multiGet', async () => {
-    let todo1String = await fsp.readFile(
-      `${__dirname}/../data/vtodo/todo1.ics`,
-      'utf-8'
-    );
-    let todo2String = await fsp.readFile(
-      `${__dirname}/../data/vtodo/todo2.ics`,
-      'utf-8'
-    );
+    let todo1String = await fsp.readFile(`${__dirname}/../data/vtodo/todo1.ics`, 'utf-8');
+    let todo2String = await fsp.readFile(`${__dirname}/../data/vtodo/todo2.ics`, 'utf-8');
 
     const rand = Math.random().toString(36).substring(7);
     const uniqueId1 = `${Date.now()}-${rand}-1`;
     const uniqueId2 = `${Date.now()}-${rand}-2`;
 
-    todo1String = todo1String.replace('UID:todo1-test@philflow.io', `UID:todo1-${uniqueId1}@philflow.io`);
-    todo2String = todo2String.replace('UID:todo2-test@philflow.io', `UID:todo2-${uniqueId2}@philflow.io`);
+    todo1String = todo1String.replace(
+      'UID:todo1-test@philflow.io',
+      `UID:todo1-${uniqueId1}@philflow.io`,
+    );
+    todo2String = todo2String.replace(
+      'UID:todo2-test@philflow.io',
+      `UID:todo2-${uniqueId2}@philflow.io`,
+    );
 
     const filename1 = `test-multi-todo-1-${uniqueId1}.ics`;
     const filename2 = `test-multi-todo-2-${uniqueId2}.ics`;
@@ -313,7 +309,7 @@ END:VCALENDAR`;
         iCalString: invalidTodo,
         filename: 'invalid-todo.ics',
         headers: authHeaders,
-      })
+      }),
     ).rejects.toThrow('iCalString must contain a UID');
   });
 
@@ -326,7 +322,7 @@ END:VCALENDAR`;
           etag: '',
         },
         headers: authHeaders,
-      })
+      }),
     ).rejects.toThrow('calendarObject must have etag for update');
   });
 
@@ -339,7 +335,7 @@ END:VCALENDAR`;
           end: 'also-not-a-date',
         },
         headers: authHeaders,
-      })
+      }),
     ).rejects.toThrow('invalid timeRange format, not in ISO8601');
   });
 

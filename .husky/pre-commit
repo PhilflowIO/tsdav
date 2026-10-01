@@ -68,18 +68,11 @@ echo "🔨 Building dist..."
 if echo "$STAGED_FILES" | grep -qE "^src/.*\.(ts|js)$"; then
   echo "📦 Source files changed, rebuilding dist..."
 
-  # Clean and rebuild
-  npx rimraf dist* 2>/dev/null || true
-  npx rollup -c rollup.config.mjs
-
-  if [ $? -ne 0 ]; then
+  # Same build the CI dist check runs (clean + tsc declarations + rolldown)
+  if ! npm run --silent build; then
     echo "❌ ERROR: Build failed!"
     exit 1
   fi
-
-  # Copy metadata files
-  npx copyfiles package.json LICENSE README.md ./dist
-  npx rimraf ./dist/ts
 
   # Add dist to commit
   git add dist/

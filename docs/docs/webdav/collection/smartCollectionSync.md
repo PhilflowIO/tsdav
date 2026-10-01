@@ -2,13 +2,13 @@
 sidebar_position: 6
 ---
 
-## `smartCollectionSync`
+## `smartCollectionSync` and `smartCollectionSyncDetailed`
 
 smart version of collection sync that combines ctag based sync with webdav sync.
 
 ```ts
 const { created, updated, deleted } = (
-  await smartCollectionSync({
+  await smartCollectionSyncDetailed({
     collection: {
       url: 'https://caldav.icloud.com/12345676/calendars/c623f6be-a2d4-4c60-932a-043e67025dde/',
       ctag: 'eWd9Vz8OwS0DE==',
@@ -24,7 +24,6 @@ const { created, updated, deleted } = (
       objectMultiGet: calendarMultiGet,
     },
     method: 'webdav',
-    detailedResult: true,
     account: {
       accountType: 'caldav',
       homeUrl: 'https://caldav.icloud.com/123456/calendars/',
@@ -39,29 +38,32 @@ const { created, updated, deleted } = (
 ### Arguments
 
 - `collection` **required**, the target collection to sync
+- `collection.objectMultiGet` required when WebDAV sync reports created or updated objects
+- `collection.fetchObjects` required when basic sync detects a changed collection
 - `method` defaults to auto detect, one of `basic` and `webdav`
 - `account` [DAVAccount](../../types/DAVAccount.md) to sync
-- `detailedResult` boolean indicate whether the return value should be detailed or not
+- `detailedResult` deprecated, use `smartCollectionSyncDetailed` for the detailed result instead.
 - `headers` request headers
 - `headersToExclude` array of keys of the headers you want to exclude
 - `fetchOptions` options to pass to underlying fetch function
 - `fetch` custom fetch implementation
 
 :::info
-`objects` inside `collection` are not needed when `detailedResult` is `true`.
+Provide the previously stored `collection.objects` to distinguish created from updated objects.
+Without that baseline, changed remote objects are classified as created. Basic sync also needs the
+baseline to identify deletions.
 :::
 
 ### Return Value
 
-depend on `detailedResult` option
+`smartCollectionSync` returns:
 
-if `detailedResult` is falsy,
+the supplied collection with an `objects` array containing the latest [DAVObject](../../types/DAVObject.md)
+and the resulting `syncToken` or `ctag`.
 
-array of latest [DAVObject](../../types/DAVObject.md)
+`smartCollectionSyncDetailed` returns:
 
-if `detailedResult` is `true`,
-
-an object of
+the supplied collection with the resulting `syncToken` or `ctag` and
 
 - `objects`
   - `created` array of [DAVObject](../../types/DAVObject.md)
@@ -81,10 +83,16 @@ fetch the latest list of [DAVObject](../../types/DAVObject.md) from remote,
 
 compare the provided list and the latest list to find out `created`, `updated`, and `deleted` objects.
 
-if `detailedResult` is falsy,
+The sync rejects with a clear error if the callback required by the selected method is missing. This
+prevents advancing a sync token or treating all local objects as deleted without first retrieving the
+remote changes. Failed sync REPORTs and failed multi-get responses also reject rather than returning
+a successful sync or advancing the token. Object-level 404 responses in a sync REPORT still represent
+deletions. A successful response with no changed objects retains the new server sync token.
+
+When using `smartCollectionSync`,
 
 fetch the latest list of [DAVObject](../../types/DAVObject.md) from changed collection using [rfc6578 webdav sync](https://datatracker.ietf.org/doc/html/rfc6578) and `objectMultiGet`
 
-if `detailedResult` is `true`,
+When using `smartCollectionSyncDetailed`,
 
 return three list of separate objects for `created`, `updated`, and `deleted`

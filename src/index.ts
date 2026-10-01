@@ -3,13 +3,20 @@ import * as addressBook from './addressBook';
 import * as calendar from './calendar';
 import * as client from './client';
 import * as collection from './collection';
-import { DAVAttributeMap, DAVNamespace, DAVNamespaceShort } from './consts';
+import { DAVAttributeMap, DAVNamespace, DAVNamespaceShort, ICALObjects } from './consts';
 import * as request from './request';
 import * as todo from './todo';
 import * as authHelpers from './util/authHelpers';
 import * as requestHelpers from './util/requestHelpers';
 
-export type { DAVDepth, DAVMethods, DAVRequest, DAVResponse, DAVTokens } from './types/DAVTypes';
+export type {
+  DAVDepth,
+  DAVMethods,
+  DAVPropStat,
+  DAVRequest,
+  DAVResponse,
+  DAVTokens,
+} from './types/DAVTypes';
 export type {
   DAVAccount,
   DAVAddressBook,
@@ -20,19 +27,34 @@ export type {
   DAVObject,
   DAVVCard,
 } from './types/models';
+export type {
+  SmartCollectionSync,
+  SmartCollectionSyncDetailed,
+  SmartCollectionSyncDetailedResult,
+  SyncCalendars,
+  SyncCalendarsDetailed,
+  SyncCalendarsDetailedResult,
+} from './types/functionsOverloads';
 
 export { DAVClient } from './client';
 
 export { createDAVClient } from './client';
-export { createAccount } from './account';
+export {
+  createAccount,
+  serviceDiscovery,
+  fetchPrincipalUrl,
+  fetchHomeUrl,
+} from './account';
 export { davRequest, propfind, createObject, updateObject, deleteObject } from './request';
 
 export {
   collectionQuery,
+  makeCollection,
   supportedReportSet,
   isCollectionDirty,
   syncCollection,
   smartCollectionSync,
+  smartCollectionSyncDetailed,
 } from './collection';
 
 export {
@@ -46,6 +68,7 @@ export {
   updateCalendarObject,
   deleteCalendarObject,
   syncCalendars,
+  syncCalendarsDetailed,
   freeBusyQuery,
 } from './calendar';
 
@@ -69,12 +92,22 @@ export {
   fetchOauthTokens,
   refreshAccessToken,
 } from './util/authHelpers';
-export { urlContains, urlEquals, getDAVAttribute, cleanupFalsy } from './util/requestHelpers';
-export { DAVNamespace, DAVAttributeMap, DAVNamespaceShort } from './consts';
+export {
+  urlContains,
+  urlEquals,
+  urlMatches,
+  ensureTrailingSlash,
+  getDAVAttribute,
+  cleanupFalsy,
+  excludeHeaders,
+  mergeHeaders,
+} from './util/requestHelpers';
+export { DAVNamespace, DAVAttributeMap, DAVNamespaceShort, ICALObjects } from './consts';
 export default {
   DAVNamespace,
   DAVNamespaceShort,
   DAVAttributeMap,
+  ICALObjects,
   ...client,
   ...request,
   ...collection,

@@ -12,7 +12,7 @@ import {
   defaultIcsFilter,
   excludeHeaders,
   getDAVAttribute,
-  validateISO8601TimeRange,
+  validateTimeRange,
 } from './util/requestHelpers';
 import { findMissingFieldNames, hasFields } from './util/typeHelpers';
 
@@ -192,7 +192,7 @@ export const fetchTodos = async (params: {
   } = params;
 
   if (timeRange) {
-    validateISO8601TimeRange(timeRange.start, timeRange.end);
+    validateTimeRange(timeRange);
   }
 
   debug(`Fetching todo objects from ${calendar?.url}`);

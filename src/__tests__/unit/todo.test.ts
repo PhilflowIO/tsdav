@@ -1,3 +1,4 @@
+import { vi, describe, it, expect, beforeEach } from 'vitest';
 import * as request from '../../request';
 import {
   createTodo,
@@ -8,18 +9,18 @@ import {
   updateTodo,
 } from '../../todo';
 
-jest.mock('../../request');
+vi.mock('../../request');
 
-const mockedDavRequest = request.davRequest as jest.MockedFunction<typeof request.davRequest>;
-const mockedCreateObject = request.createObject as jest.MockedFunction<typeof request.createObject>;
-const mockedUpdateObject = request.updateObject as jest.MockedFunction<typeof request.updateObject>;
-const mockedDeleteObject = request.deleteObject as jest.MockedFunction<typeof request.deleteObject>;
+const mockedDavRequest = request.davRequest as vi.MockedFunction<typeof request.davRequest>;
+const mockedCreateObject = request.createObject as vi.MockedFunction<typeof request.createObject>;
+const mockedUpdateObject = request.updateObject as vi.MockedFunction<typeof request.updateObject>;
+const mockedDeleteObject = request.deleteObject as vi.MockedFunction<typeof request.deleteObject>;
 
 describe('todo fetch override', () => {
-  const customFetch = jest.fn() as unknown as typeof fetch;
+  const customFetch = vi.fn() as unknown as typeof fetch;
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     mockedDavRequest.mockResolvedValue([]);
   });
 

@@ -2,6 +2,24 @@ import { DAVAttributeMap, DAVNamespace } from '../consts';
 
 import type { NoUndefinedField } from './typeHelpers';
 
+const normalizeUrl = (url: string): string => {
+  const trimmed = url.trim();
+  return trimmed.endsWith('/') ? trimmed.slice(0, -1) : trimmed;
+};
+
+/** Ensure a directory or collection URL ends with a trailing slash for relative resolution. */
+export const ensureTrailingSlash = (url: string): string => {
+  const trimmed = url.trim();
+  const suffixIndex = trimmed.search(/[?#]/);
+  const pathname = suffixIndex === -1 ? trimmed : trimmed.slice(0, suffixIndex);
+  const suffix = suffixIndex === -1 ? '' : trimmed.slice(suffixIndex);
+  return `${pathname.endsWith('/') ? pathname : `${pathname}/`}${suffix}`;
+};
+
+/**
+ * Strict URL equality after trimming whitespace and a single trailing slash.
+ * Two URLs are equal if and only if their normalized forms are identical.
+ */
 export const urlEquals = (urlA?: string, urlB?: string): boolean => {
   if (!urlA && !urlB) {
     return true;
@@ -9,19 +27,20 @@ export const urlEquals = (urlA?: string, urlB?: string): boolean => {
   if (!urlA || !urlB) {
     return false;
   }
-
-  const trimmedUrlA = urlA.trim();
-  const trimmedUrlB = urlB.trim();
-
-  if (Math.abs(trimmedUrlA.length - trimmedUrlB.length) > 1) {
-    return false;
-  }
-
-  const strippedUrlA = trimmedUrlA.slice(-1) === '/' ? trimmedUrlA.slice(0, -1) : trimmedUrlA;
-  const strippedUrlB = trimmedUrlB.slice(-1) === '/' ? trimmedUrlB.slice(0, -1) : trimmedUrlB;
-  return urlA.includes(strippedUrlB) || urlB.includes(strippedUrlA);
+  return normalizeUrl(urlA) === normalizeUrl(urlB);
 };
 
+/**
+ * Loose URL containment check used for matching DAV responses against known
+ * collection/principal URLs. Tolerates trailing slashes and partial vs. full
+ * URLs (e.g. "www.example.com" vs. "https://www.example.com/").
+ *
+ * NOTE: this is intentionally permissive to accommodate DAV servers that
+ * return hrefs as paths instead of full URLs. Callers MUST only compare URLs
+ * at the same hierarchy level (collection-to-collection, object-to-object).
+ * Comparing a collection URL against an object URL will produce false
+ * positives because the collection URL is a prefix of the object URL.
+ */
 export const urlContains = (urlA?: string, urlB?: string): boolean => {
   if (!urlA && !urlB) {
     return true;
@@ -30,22 +49,38 @@ export const urlContains = (urlA?: string, urlB?: string): boolean => {
     return false;
   }
 
-  const trimmedUrlA = urlA.trim();
-  const trimmedUrlB = urlB.trim();
+  const strippedUrlA = normalizeUrl(urlA);
+  const strippedUrlB = normalizeUrl(urlB);
+  return strippedUrlA.includes(strippedUrlB) || strippedUrlB.includes(strippedUrlA);
+};
 
-  const strippedUrlA = trimmedUrlA.slice(-1) === '/' ? trimmedUrlA.slice(0, -1) : trimmedUrlA;
-  const strippedUrlB = trimmedUrlB.slice(-1) === '/' ? trimmedUrlB.slice(0, -1) : trimmedUrlB;
-  return urlA.includes(strippedUrlB) || urlB.includes(strippedUrlA);
+/**
+ * Compare two DAV hrefs as resource identifiers after resolving relative
+ * hrefs against the same collection or account URL.
+ */
+export const urlMatches = (urlA?: string, urlB?: string, baseUrl?: string): boolean => {
+  if (!urlA || !urlB || !baseUrl) {
+    return urlEquals(urlA, urlB);
+  }
+
+  try {
+    return urlEquals(new URL(urlA, baseUrl).href, new URL(urlB, baseUrl).href);
+  } catch {
+    return urlEquals(urlA, urlB);
+  }
 };
 
 export const getDAVAttribute = (nsArr: DAVNamespace[]): { [key: string]: DAVNamespace } =>
   nsArr.reduce((prev, curr) => ({ ...prev, [DAVAttributeMap[curr]]: curr }), {});
 
 export const cleanupFalsy = <T extends object = object>(obj: T): NoUndefinedField<T> =>
-  Object.entries(obj).reduce((prev, [key, value]) => {
-    if (value) return { ...prev, [key]: value };
-    return prev;
-  }, {} as NoUndefinedField<T>);
+  Object.entries(obj).reduce(
+    (prev, [key, value]) => {
+      if (value) return { ...prev, [key]: value };
+      return prev;
+    },
+    {} as NoUndefinedField<T>,
+  );
 
 export const conditionalParam = <T>(key: string, param: T) => {
   if (param) {
@@ -67,24 +102,73 @@ export const excludeHeaders = (
     return headers;
   }
 
+  // HTTP headers are case-insensitive, so normalize both sides before comparing
+  const excludeSet = new Set(headersToExclude.map((h) => h.toLowerCase()));
   return Object.fromEntries(
-    Object.entries(headers).filter(([key]) => !headersToExclude.includes(key)),
+    Object.entries(headers).filter(([key]) => !excludeSet.has(key.toLowerCase())),
   );
 };
 
 const DEFAULT_ICAL_EXTENSION = '.ics';
 
+/** Default object URL filter for calendar/todo collections: keep only `.ics` resources. */
 export const defaultIcsFilter = (url: string): boolean =>
   Boolean(url?.includes(DEFAULT_ICAL_EXTENSION));
 
-export const validateISO8601TimeRange = (start: string, end: string): void => {
-  const ISO_8601 = /^\d{4}(-\d\d(-\d\d(T\d\d:\d\d(:\d\d)?(\.\d+)?(([+-]\d\d:\d\d)|Z)?)?)?)?$/i;
-  const ISO_8601_FULL = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?(([+-]\d\d:\d\d)|Z)?$/i;
+const ISO_8601 = /^\d{4}(-\d\d(-\d\d(T\d\d:\d\d(:\d\d)?(\.\d+)?(([+-]\d\d:\d\d)|Z)?)?)?)?$/i;
+const ISO_8601_FULL = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?(([+-]\d\d:\d\d)|Z)?$/i;
 
-  if (
-    (!ISO_8601.test(start) || !ISO_8601.test(end)) &&
-    (!ISO_8601_FULL.test(start) || !ISO_8601_FULL.test(end))
-  ) {
+/**
+ * Validate a time-range input: both endpoints must be ISO-8601 shaped AND
+ * parse to a real Date (so values like `0000-13-99` get rejected).
+ */
+export const validateTimeRange = (timeRange: { start: string; end: string }): void => {
+  const { start, end } = timeRange;
+  const formatValid =
+    (ISO_8601.test(start) && ISO_8601.test(end)) ||
+    (ISO_8601_FULL.test(start) && ISO_8601_FULL.test(end));
+  if (!formatValid) {
     throw new Error('invalid timeRange format, not in ISO8601');
   }
+  if (Number.isNaN(new Date(start).getTime()) || Number.isNaN(new Date(end).getTime())) {
+    throw new Error('invalid timeRange: start or end is not a valid date');
+  }
+  if (new Date(start).getTime() >= new Date(end).getTime()) {
+    throw new Error('invalid timeRange: start must be before end');
+  }
+};
+
+/** Merge all valid HeadersInit forms with case-insensitive last-write-wins semantics. */
+export const mergeHeaders = (
+  ...headerSources: Array<HeadersInit | undefined>
+): Record<string, string> => {
+  const headersByLowercaseName = new Map<string, [string, string]>();
+
+  const setHeader = (name: string, value: string): void => {
+    headersByLowercaseName.set(name.toLowerCase(), [name, value]);
+  };
+
+  for (const source of headerSources) {
+    if (!source) continue;
+
+    if (Array.isArray(source)) {
+      for (const [name, value] of source) {
+        setHeader(name, value);
+      }
+      continue;
+    }
+
+    if (typeof (source as Headers).forEach === 'function') {
+      (source as Headers).forEach((value, name) => {
+        setHeader(name, value);
+      });
+      continue;
+    }
+
+    for (const [name, value] of Object.entries(source)) {
+      setHeader(name, value);
+    }
+  }
+
+  return Object.fromEntries(headersByLowercaseName.values());
 };

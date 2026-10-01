@@ -1,3 +1,4 @@
+import { test, expect } from 'vitest';
 import { findMissingFieldNames, hasFields } from '../../util/typeHelpers';
 
 test('hasFields should detect missing fields', () => {

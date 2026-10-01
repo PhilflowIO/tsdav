@@ -23,7 +23,7 @@ webdav request made easy
 ### Features
 
 - Easy to use, well documented JSON based WEBDAV API
-- Works in both `Browsers` and `Node.js`
+- Works in `Browsers`, `Node.js` (>= 18), `Bun`, `Deno`, and `Cloudflare Workers`
 - Supports Both `commonjs` and `esm`
 - OAuth2 & basic auth helpers built-in
 - Native typescript, fully linted and well tested
@@ -41,6 +41,11 @@ or
 ```bash
 yarn add tsdav
 ```
+
+### Runtime usage
+
+`tsdav` works in Node.js (>= 18), browsers, Bun, Deno, and Cloudflare Workers.
+See the [runtime-specific usage docs](https://tsdav.vercel.app/docs/#browser-usage) for Bun, Deno, Cloudflare Workers, browser CORS notes, and custom `fetch` transports.
 
 ### Quickstart
 

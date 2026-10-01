@@ -6,18 +6,14 @@
     "strict": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "moduleResolution": "node",
-    "lib": ["ES2018", "dom", "DOM.Iterable"],
-    "module": "commonjs",
+    "moduleResolution": "bundler",
+    "lib": ["ES2019", "dom", "DOM.Iterable"],
+    "module": "preserve",
     "target": "ES2018",
     "declaration": true,
     "isolatedModules": true,
-    "baseUrl": ".",
-    "paths": {
-      "*": ["node_modules/*"]
-    },
     "outDir": "./dist"
   },
-  "include": ["src/**/*", "env.d.ts", "rollup.config.mjs"],
+  "include": ["src/**/*", "env.d.ts", "rolldown.config.mjs"],
   "exclude": ["node_modules", "**/__tests__/**"]
 }
