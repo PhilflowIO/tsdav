@@ -92,3 +92,39 @@ describe('todo fetch override', () => {
     expect(mockedDavRequest.mock.calls[0][0].fetch).toBeUndefined();
   });
 });
+
+describe('fetchTodos request shape', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockedDavRequest.mockResolvedValue([]);
+  });
+
+  it('queries VTODO components, not VEVENT', async () => {
+    await fetchTodos({ calendar: { url: 'http://example.com/cal/' } });
+
+    const body = JSON.stringify(mockedDavRequest.mock.calls[0][0].init.body);
+    expect(body).toContain('"name":"VTODO"');
+    expect(body).not.toContain('"name":"VEVENT"');
+  });
+
+  it('adds the time-range to the VTODO filter', async () => {
+    await fetchTodos({
+      calendar: { url: 'http://example.com/cal/' },
+      timeRange: { start: '2026-01-01T00:00:00Z', end: '2026-02-01T00:00:00Z' },
+    });
+
+    const body = JSON.stringify(mockedDavRequest.mock.calls[0][0].init.body);
+    expect(body).toContain('"start":"20260101T000000Z"');
+    expect(body).toContain('"end":"20260201T000000Z"');
+  });
+
+  it('rejects an inverted time-range before any request', async () => {
+    await expect(
+      fetchTodos({
+        calendar: { url: 'http://example.com/cal/' },
+        timeRange: { start: '2026-02-01T00:00:00Z', end: '2026-01-01T00:00:00Z' },
+      }),
+    ).rejects.toThrow('start must be before end');
+    expect(mockedDavRequest).not.toHaveBeenCalled();
+  });
+});

@@ -1786,13 +1786,17 @@ var todo_exports = /* @__PURE__ */ __exportAll({
 	updateTodo: () => updateTodo
 });
 const debug$2 = (0, debug.default)("tsdav:todo");
-/**
-* Helper function to build expand property for calendar-data
-*/
-const buildExpandProp = (timeRange) => ({ [`c:expand`]: { _attributes: {
-	start: `${new Date(timeRange.start).toISOString().slice(0, 19).replace(/[-:.]/g, "")}Z`,
-	end: `${new Date(timeRange.end).toISOString().slice(0, 19).replace(/[-:.]/g, "")}Z`
-} } });
+const toCalDAVDateTime = (value) => `${new Date(value).toISOString().slice(0, 19).replace(/[-:.]/g, "")}Z`;
+const buildTodoFilter = (timeRange) => [{ "comp-filter": {
+	_attributes: { name: "VCALENDAR" },
+	"comp-filter": {
+		_attributes: { name: "VTODO" },
+		...timeRange ? { "time-range": { _attributes: {
+			start: toCalDAVDateTime(timeRange.start),
+			end: toCalDAVDateTime(timeRange.end)
+		} } } : {}
+	}
+} }];
 /**
 * Query todos using CalDAV REPORT calendar-query
 *
@@ -1807,28 +1811,7 @@ const buildExpandProp = (timeRange) => ({ [`c:expand`]: { _attributes: {
 * @param params.fetch - Optional fetch implementation to use instead of the default
 * @returns Array of DAV responses
 */
-const todoQuery = async (params) => {
-	const { url, props, filters, timezone, depth, headers, headersToExclude, fetchOptions = {}, fetch: fetchOverride } = params;
-	return collectionQuery({
-		url,
-		body: { "calendar-query": cleanupFalsy({
-			_attributes: getDAVAttribute([
-				"urn:ietf:params:xml:ns:caldav",
-				"http://calendarserver.org/ns/",
-				"http://apple.com/ns/ical/",
-				"DAV:"
-			]),
-			[`d:prop`]: props,
-			filter: filters,
-			timezone
-		}) },
-		defaultNamespace: "c",
-		depth,
-		headers: excludeHeaders(headers, headersToExclude),
-		fetchOptions,
-		fetch: fetchOverride
-	});
-};
+const todoQuery = async (params) => calendarQuery(params);
 /**
 * Fetch multiple todos by URL using CalDAV calendar-multiget
 *
@@ -1844,32 +1827,15 @@ const todoQuery = async (params) => {
 * @param params.fetch - Optional fetch implementation to use instead of the default
 * @returns Array of DAV responses
 */
-const todoMultiGet = async (params) => {
-	const { url, props, objectUrls, filters, timezone, depth, headers, headersToExclude, fetchOptions = {}, fetch: fetchOverride } = params;
-	return collectionQuery({
-		url,
-		body: { "calendar-multiget": cleanupFalsy({
-			_attributes: getDAVAttribute(["DAV:", "urn:ietf:params:xml:ns:caldav"]),
-			[`d:prop`]: props,
-			[`d:href`]: objectUrls,
-			filter: filters,
-			timezone
-		}) },
-		defaultNamespace: "c",
-		depth,
-		headers: excludeHeaders(headers, headersToExclude),
-		fetchOptions,
-		fetch: fetchOverride
-	});
-};
+const todoMultiGet = async (params) => calendarMultiGet(params);
 /**
 * Fetch VTODO objects from a CalDAV calendar with optional filtering
 *
 * @param params.calendar - Calendar to fetch todos from
 * @param params.objectUrls - Optional array of specific todo URLs to fetch
-* @param params.filters - Optional custom CalDAV filters
+* @param params.filters - Optional custom CalDAV filters (replaces the default VTODO filter)
 * @param params.timeRange - Optional time range filter in ISO8601 format
-* @param params.expand - Whether to expand recurring todos
+* @param params.expand - Whether to expand recurring todos (requires timeRange)
 * @param params.urlFilter - Custom filter function for todo object URLs
 * @param params.headers - Request headers
 * @param params.headersToExclude - Headers to exclude
@@ -1877,68 +1843,17 @@ const todoMultiGet = async (params) => {
 * @param params.fetchOptions - Fetch options
 * @param params.fetch - Optional fetch implementation to use instead of the default
 * @returns Array of todo objects with url, etag, and iCalendar data
-* @throws Error if calendar URL is missing or timeRange format is invalid
+* @throws Error if calendar URL is missing or timeRange is invalid
 */
 const fetchTodos = async (params) => {
-	const { calendar, objectUrls, filters: customFilters, timeRange, headers, expand, urlFilter = defaultIcsFilter, useMultiGet = true, headersToExclude, fetchOptions = {}, fetch: fetchOverride } = params;
+	const { filters, timeRange, calendar } = params;
 	if (timeRange) validateTimeRange(timeRange);
 	debug$2(`Fetching todo objects from ${calendar?.url}`);
-	const requiredFields = ["url"];
-	if (!calendar || !hasFields(calendar, requiredFields)) {
-		if (!calendar) throw new Error("cannot fetchTodos for undefined calendar");
-		throw new Error(`calendar must have ${findMissingFieldNames(calendar, requiredFields)} before fetchTodos`);
-	}
-	const filters = customFilters ?? [{ "comp-filter": {
-		_attributes: { name: "VCALENDAR" },
-		"comp-filter": {
-			_attributes: { name: "VTODO" },
-			...timeRange ? { "time-range": { _attributes: {
-				start: `${new Date(timeRange.start).toISOString().slice(0, 19).replace(/[-:.]/g, "")}Z`,
-				end: `${new Date(timeRange.end).toISOString().slice(0, 19).replace(/[-:.]/g, "")}Z`
-			} } } : {}
-		}
-	} }];
-	const todoObjectUrls = (objectUrls ?? (await todoQuery({
-		url: calendar.url,
-		props: { [`d:getetag`]: { ...expand && timeRange ? buildExpandProp(timeRange) : {} } },
-		filters,
-		depth: "1",
-		headers: excludeHeaders(headers, headersToExclude),
-		fetchOptions,
-		fetch: fetchOverride
-	})).map((res) => res.href ?? "")).map((url) => url.startsWith("http") || !url ? url : new URL(url, calendar.url).href).filter(urlFilter).map((url) => new URL(url).pathname);
-	let todoObjectResults = [];
-	if (todoObjectUrls.length > 0) {
-		if (!useMultiGet || expand) todoObjectResults = await todoQuery({
-			url: calendar.url,
-			props: {
-				[`d:getetag`]: {},
-				[`c:calendar-data`]: { ...expand && timeRange ? buildExpandProp(timeRange) : {} }
-			},
-			filters,
-			depth: "1",
-			headers: excludeHeaders(headers, headersToExclude),
-			fetchOptions,
-			fetch: fetchOverride
-		});
-		else todoObjectResults = await todoMultiGet({
-			url: calendar.url,
-			props: {
-				[`d:getetag`]: {},
-				[`c:calendar-data`]: { ...expand && timeRange ? buildExpandProp(timeRange) : {} }
-			},
-			objectUrls: todoObjectUrls,
-			depth: "1",
-			headers: excludeHeaders(headers, headersToExclude),
-			fetchOptions,
-			fetch: fetchOverride
-		});
-	}
-	return todoObjectResults.map((res) => ({
-		url: new URL(res.href ?? "", calendar.url).href,
-		etag: `${res.props?.getetag}`,
-		data: res.props?.calendarData?._cdata ?? res.props?.calendarData
-	}));
+	if (!calendar) throw new Error("cannot fetchTodos for undefined calendar");
+	return fetchCalendarObjects({
+		...params,
+		filters: filters ?? buildTodoFilter(timeRange)
+	});
 };
 /**
 * Create a new VTODO object in a CalDAV calendar
@@ -1954,19 +1869,8 @@ const fetchTodos = async (params) => {
 * @throws Error if iCalString does not contain a UID
 */
 const createTodo = async (params) => {
-	const { calendar, iCalString, filename, headers, headersToExclude, fetchOptions = {}, fetch: fetchOverride } = params;
-	if (!iCalString.includes("UID:")) throw new Error("iCalString must contain a UID");
-	return createObject({
-		url: new URL(filename, calendar.url).href,
-		data: iCalString,
-		headers: excludeHeaders({
-			"content-type": "text/calendar; charset=utf-8",
-			"If-None-Match": "*",
-			...headers
-		}, headersToExclude),
-		fetchOptions,
-		fetch: fetchOverride
-	});
+	if (!params.iCalString.includes("UID:")) throw new Error("iCalString must contain a UID");
+	return createCalendarObject(params);
 };
 /**
 * Update an existing VTODO object in a CalDAV calendar
@@ -1980,19 +1884,8 @@ const createTodo = async (params) => {
 * @throws Error if calendarObject does not have an etag
 */
 const updateTodo = async (params) => {
-	const { calendarObject, headers, headersToExclude, fetchOptions = {}, fetch: fetchOverride } = params;
-	if (!calendarObject.etag) throw new Error("calendarObject must have etag for update - fetch todo first");
-	return updateObject({
-		url: calendarObject.url,
-		data: calendarObject.data,
-		etag: calendarObject.etag,
-		headers: excludeHeaders({
-			"content-type": "text/calendar; charset=utf-8",
-			...headers
-		}, headersToExclude),
-		fetchOptions,
-		fetch: fetchOverride
-	});
+	if (!params.calendarObject.etag) throw new Error("calendarObject must have etag for update - fetch todo first");
+	return updateCalendarObject(params);
 };
 /**
 * Delete a VTODO object from a CalDAV calendar
@@ -2004,16 +1897,7 @@ const updateTodo = async (params) => {
 * @param params.fetch - Optional fetch implementation to use instead of the default
 * @returns Response from the server
 */
-const deleteTodo = async (params) => {
-	const { calendarObject, headers, headersToExclude, fetchOptions = {}, fetch: fetchOverride } = params;
-	return deleteObject({
-		url: calendarObject.url,
-		etag: calendarObject.etag,
-		headers: excludeHeaders(headers, headersToExclude),
-		fetchOptions,
-		fetch: fetchOverride
-	});
-};
+const deleteTodo = async (params) => deleteCalendarObject(params);
 //#endregion
 //#region src/util/authHelpers.ts
 var authHelpers_exports = /* @__PURE__ */ __exportAll({
