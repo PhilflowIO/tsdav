@@ -23,6 +23,7 @@ const objects = await fetchCalendarObjects({
 - `timeRange` time range in iso format
   - `start` start time in [ISO 8601 format](https://en.wikipedia.org/wiki/ISO_8601), format that's not in ISO 8601 will cause an error be thrown.
   - `end` end time in [ISO 8601 format](https://en.wikipedia.org/wiki/ISO_8601), format that's not in ISO 8601 will cause an error be thrown.
+  - `start` must be earlier than `end`.
 - `headers` request headers
 - `headersToExclude` array of keys of the headers you want to exclude
 - `fetchOptions` options to pass to underlying fetch function
@@ -31,6 +32,7 @@ const objects = await fetchCalendarObjects({
   in this case, you need to pass in your own calendar object name filter so that you can have results you need.
   :::
 - `urlFilter` **default: function which only keep .ics objects** predicate function to filter urls from the calendar objects before fetching
+- `expand` requires `timeRange`; requests without it reject.
 - `expand` whether to [expand](https://datatracker.ietf.org/doc/html/rfc4791#section-9.6.5) the calendar objects, forcing the server to expand recurring components into individual calendar objects.
   :::info
   some calendar providers may not support calendarMultiGet, then it's necessary to use calendarQuery to fetch calendar object data.
@@ -44,3 +46,8 @@ array of [DAVCalendarObject](../types/DAVCalendarObject.md)
 ### Behavior
 
 a mix of [calendarMultiGet](calendarMultiGet.md) and [calendarQuery](calendarQuery.md), you can specify both filters and objectUrls here.
+
+The default query selects `VEVENT` resources. For a complete collection snapshot, pass
+`filters: { "comp-filter": { _attributes: { name: "VCALENDAR" } } }` and a `urlFilter` that
+accepts every object URL except the collection URL, including extensionless resources. Built-in
+calendar sync and account loading use this complete query.

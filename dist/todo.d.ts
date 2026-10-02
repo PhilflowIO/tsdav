@@ -1,6 +1,6 @@
-import { ElementCompact } from 'xml-js';
-import { DAVDepth, DAVResponse } from './types/DAVTypes';
-import { DAVCalendar, DAVCalendarObject } from './types/models';
+import type { ElementCompact } from 'xml-js';
+import type { DAVDepth, DAVResponse } from './types/DAVTypes';
+import type { DAVCalendar, DAVCalendarObject } from './types/models';
 /**
  * Query todos using CalDAV REPORT calendar-query
  *
@@ -58,9 +58,9 @@ export declare const todoMultiGet: (params: {
  *
  * @param params.calendar - Calendar to fetch todos from
  * @param params.objectUrls - Optional array of specific todo URLs to fetch
- * @param params.filters - Optional custom CalDAV filters
+ * @param params.filters - Optional custom CalDAV filters (replaces the default VTODO filter)
  * @param params.timeRange - Optional time range filter in ISO8601 format
- * @param params.expand - Whether to expand recurring todos
+ * @param params.expand - Whether to expand recurring todos (requires timeRange)
  * @param params.urlFilter - Custom filter function for todo object URLs
  * @param params.headers - Request headers
  * @param params.headersToExclude - Headers to exclude
@@ -68,7 +68,7 @@ export declare const todoMultiGet: (params: {
  * @param params.fetchOptions - Fetch options
  * @param params.fetch - Optional fetch implementation to use instead of the default
  * @returns Array of todo objects with url, etag, and iCalendar data
- * @throws Error if calendar URL is missing or timeRange format is invalid
+ * @throws Error if calendar URL is missing or timeRange is invalid
  */
 export declare const fetchTodos: (params: {
     calendar: DAVCalendar;

@@ -1,3 +1,4 @@
+import { vi, describe, it, expect, beforeEach } from 'vitest';
 import * as request from '../../request';
 import {
   createTodo,
@@ -8,18 +9,18 @@ import {
   updateTodo,
 } from '../../todo';
 
-jest.mock('../../request');
+vi.mock('../../request');
 
-const mockedDavRequest = request.davRequest as jest.MockedFunction<typeof request.davRequest>;
-const mockedCreateObject = request.createObject as jest.MockedFunction<typeof request.createObject>;
-const mockedUpdateObject = request.updateObject as jest.MockedFunction<typeof request.updateObject>;
-const mockedDeleteObject = request.deleteObject as jest.MockedFunction<typeof request.deleteObject>;
+const mockedDavRequest = request.davRequest as vi.MockedFunction<typeof request.davRequest>;
+const mockedCreateObject = request.createObject as vi.MockedFunction<typeof request.createObject>;
+const mockedUpdateObject = request.updateObject as vi.MockedFunction<typeof request.updateObject>;
+const mockedDeleteObject = request.deleteObject as vi.MockedFunction<typeof request.deleteObject>;
 
 describe('todo fetch override', () => {
-  const customFetch = jest.fn() as unknown as typeof fetch;
+  const customFetch = vi.fn() as unknown as typeof fetch;
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     mockedDavRequest.mockResolvedValue([]);
   });
 
@@ -89,5 +90,48 @@ describe('todo fetch override', () => {
     await todoQuery({ url: 'http://example.com/cal/', props: {} });
 
     expect(mockedDavRequest.mock.calls[0][0].fetch).toBeUndefined();
+  });
+});
+
+describe('fetchTodos request shape', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockedDavRequest.mockResolvedValue([]);
+  });
+
+  it('queries VTODO components, not VEVENT', async () => {
+    await fetchTodos({ calendar: { url: 'http://example.com/cal/' } });
+
+    const body = JSON.stringify(mockedDavRequest.mock.calls[0][0].init.body);
+    expect(body).toContain('"name":"VTODO"');
+    expect(body).not.toContain('"name":"VEVENT"');
+  });
+
+  it('adds the time-range to the VTODO filter', async () => {
+    await fetchTodos({
+      calendar: { url: 'http://example.com/cal/' },
+      timeRange: { start: '2026-01-01T00:00:00Z', end: '2026-02-01T00:00:00Z' },
+    });
+
+    const body = JSON.stringify(mockedDavRequest.mock.calls[0][0].init.body);
+    expect(body).toContain('"start":"20260101T000000Z"');
+    expect(body).toContain('"end":"20260201T000000Z"');
+  });
+
+  it('rejects an inverted time-range before any request', async () => {
+    await expect(
+      fetchTodos({
+        calendar: { url: 'http://example.com/cal/' },
+        timeRange: { start: '2026-02-01T00:00:00Z', end: '2026-01-01T00:00:00Z' },
+      }),
+    ).rejects.toThrow('start must be before end');
+    expect(mockedDavRequest).not.toHaveBeenCalled();
+  });
+
+  it('names fetchTodos when the calendar has no url', async () => {
+    await expect(fetchTodos({ calendar: {} })).rejects.toThrow(
+      'cannot fetchTodos for a calendar without url',
+    );
+    expect(mockedDavRequest).not.toHaveBeenCalled();
   });
 });

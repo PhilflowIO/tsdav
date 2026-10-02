@@ -7,7 +7,15 @@ import { DAVNamespace, DAVNamespaceShort } from './consts';
 import { createObject, davRequest, deleteObject, propfind, updateObject } from './request';
 import { DAVDepth, DAVResponse } from './types/DAVTypes';
 import { DAVAccount, DAVAddressBook, DAVVCard } from './types/models';
-import { cleanupFalsy, excludeHeaders, getDAVAttribute, urlEquals } from './util/requestHelpers';
+import {
+  cleanupFalsy,
+  excludeHeaders,
+  getDAVAttribute,
+  urlEquals,
+  ensureTrailingSlash,
+} from './util/requestHelpers';
+import { getDAVUrlKey } from './util/syncHelpers';
+import { assertDAVDiscovery, assertDAVObjectResponses, getDAVText } from './util/responseHelpers';
 import { findMissingFieldNames, hasFields } from './util/typeHelpers';
 
 const debug = getLogger('tsdav:addressBook');
@@ -50,6 +58,7 @@ export const addressBookQuery = async (params: {
     defaultNamespace: DAVNamespaceShort.CARDDAV,
     depth,
     headers: excludeHeaders(headers, headersToExclude),
+    headersToExclude,
     fetchOptions,
     fetch: fetchOverride,
   });
@@ -87,6 +96,7 @@ export const addressBookMultiGet = async (params: {
     defaultNamespace: DAVNamespaceShort.CARDDAV,
     depth,
     headers: excludeHeaders(headers, headersToExclude),
+    headersToExclude,
     fetchOptions,
     fetch: fetchOverride,
   });
@@ -122,17 +132,23 @@ export const fetchAddressBooks = async (params?: {
   }
   const res = await propfind({
     url: account.homeUrl,
-    props: customProps ?? {
-      [`${DAVNamespaceShort.DAV}:displayname`]: {},
-      [`${DAVNamespaceShort.CALENDAR_SERVER}:getctag`]: {},
+    props: {
+      ...(customProps ?? {
+        [`${DAVNamespaceShort.DAV}:displayname`]: {},
+        [`${DAVNamespaceShort.CALENDAR_SERVER}:getctag`]: {},
+        [`${DAVNamespaceShort.DAV}:resourcetype`]: {},
+        [`${DAVNamespaceShort.DAV}:sync-token`]: {},
+      }),
       [`${DAVNamespaceShort.DAV}:resourcetype`]: {},
-      [`${DAVNamespaceShort.DAV}:sync-token`]: {},
     },
     depth: '1',
     headers: excludeHeaders(headers, headersToExclude),
+    headersToExclude,
     fetchOptions,
     fetch: fetchOverride,
   });
+  assertDAVDiscovery(res, 'Address book discovery failed');
+
   return Promise.all(
     res
       .filter((r) => Object.keys(r.props?.resourcetype ?? {}).includes('addressbook'))
@@ -141,11 +157,11 @@ export const fetchAddressBooks = async (params?: {
         debug(`Found address book named ${typeof displayName === 'string' ? displayName : ''},
              props: ${JSON.stringify(rs.props)}`);
         return {
-          url: new URL(rs.href ?? '', account.rootUrl ?? '').href,
-          ctag: rs.props?.getctag,
+          url: new URL(rs.href ?? '', ensureTrailingSlash(account.rootUrl ?? '')).href,
+          ctag: getDAVText(rs.props?.getctag),
           displayName: typeof displayName === 'string' ? displayName : '',
-          resourcetype: Object.keys(rs.props?.resourcetype),
-          syncToken: rs.props?.syncToken,
+          resourcetype: Object.keys(rs.props?.resourcetype ?? {}),
+          syncToken: getDAVText(rs.props?.syncToken),
         };
       })
       .map(async (addr) => ({
@@ -153,6 +169,7 @@ export const fetchAddressBooks = async (params?: {
         reports: await supportedReportSet({
           collection: addr,
           headers: excludeHeaders(headers, headersToExclude),
+          headersToExclude,
           fetchOptions,
           fetch: fetchOverride,
         }),
@@ -175,7 +192,7 @@ export const fetchVCards = async (params: {
     headers,
     objectUrls,
     headersToExclude,
-    urlFilter = (url) => url,
+    urlFilter = (url) => Boolean(url),
     useMultiGet = true,
     fetchOptions = {},
     fetch: fetchOverride,
@@ -203,16 +220,24 @@ export const fetchVCards = async (params: {
         props: { [`${DAVNamespaceShort.DAV}:getetag`]: {} },
         depth: '1',
         headers: excludeHeaders(headers, headersToExclude),
+        headersToExclude,
         fetchOptions,
         fetch: fetchOverride,
       })
     ).map((res) => res.href ?? '')
   )
-    .map((url) => (url.startsWith('http') || !url ? url : new URL(url, addressBook.url).href))
-    .filter((url) => url && !urlEquals(url, addressBook.url))
+    .filter((url): url is string => typeof url === 'string' && url.trim().length > 0)
+    .map((url) =>
+      url.startsWith('http') ? url : new URL(url, ensureTrailingSlash(addressBook.url)).href,
+    )
+    .filter((url) => !urlEquals(url, addressBook.url))
     .filter(urlFilter)
-    .map((url) => new URL(url).pathname);
+    .map((url) => {
+      const parsedUrl = new URL(url);
+      return `${parsedUrl.pathname}${parsedUrl.search}`;
+    });
 
+  const targetUrls = new Set(vcardUrls.map((url) => getDAVUrlKey(url, addressBook.url)));
   let vCardResults: DAVResponse[] = [];
   if (vcardUrls.length > 0) {
     if (useMultiGet) {
@@ -225,6 +250,7 @@ export const fetchVCards = async (params: {
         objectUrls: vcardUrls,
         depth: '1',
         headers: excludeHeaders(headers, headersToExclude),
+        headersToExclude,
         fetchOptions,
         fetch: fetchOverride,
       });
@@ -237,15 +263,26 @@ export const fetchVCards = async (params: {
         },
         depth: '1',
         headers: excludeHeaders(headers, headersToExclude),
+        headersToExclude,
         fetchOptions,
         fetch: fetchOverride,
       });
+      vCardResults = vCardResults.filter(
+        (res) => !!res.href && targetUrls.has(getDAVUrlKey(res.href, addressBook.url)),
+      );
     }
   }
 
+  assertDAVObjectResponses(
+    vCardResults,
+    'addressData',
+    vcardUrls,
+    addressBook.url,
+    'VCard fetch failed',
+  );
   return vCardResults.map((res) => ({
-    url: new URL(res.href ?? '', addressBook.url).href,
-    etag: res.props?.getetag,
+    url: new URL(res.href ?? '', ensureTrailingSlash(addressBook.url)).href,
+    etag: getDAVText(res.props?.getetag),
     data: res.props?.addressData?._cdata ?? res.props?.addressData,
   }));
 };
@@ -269,7 +306,7 @@ export const createVCard = async (params: {
     fetch: fetchOverride,
   } = params;
   return createObject({
-    url: new URL(filename, addressBook.url).href,
+    url: new URL(filename, ensureTrailingSlash(addressBook.url)).href,
     data: vCardString,
     headers: excludeHeaders(
       {
@@ -279,6 +316,7 @@ export const createVCard = async (params: {
       },
       headersToExclude,
     ),
+    headersToExclude,
     fetchOptions,
     fetch: fetchOverride,
   });
@@ -303,6 +341,7 @@ export const updateVCard = async (params: {
       },
       headersToExclude,
     ),
+    headersToExclude,
     fetchOptions,
     fetch: fetchOverride,
   });
@@ -320,6 +359,7 @@ export const deleteVCard = async (params: {
     url: vCard.url,
     etag: vCard.etag,
     headers: excludeHeaders(headers, headersToExclude),
+    headersToExclude,
     fetchOptions,
     fetch: fetchOverride,
   });

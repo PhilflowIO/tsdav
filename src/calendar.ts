@@ -6,20 +6,36 @@ import { collectionQuery, smartCollectionSync, supportedReportSet } from './coll
 import { DAVNamespace, DAVNamespaceShort, ICALObjects } from './consts';
 import { createObject, davRequest, deleteObject, propfind, updateObject } from './request';
 import { DAVDepth, DAVResponse } from './types/DAVTypes';
-import { SyncCalendars } from './types/functionsOverloads';
+import {
+  SyncCalendars,
+  SyncCalendarsDetailed,
+  SyncCalendarsDetailedResult,
+} from './types/functionsOverloads';
 import { DAVAccount, DAVCalendar, DAVCalendarObject } from './types/models';
 import {
   cleanupFalsy,
-  conditionalParam,
-  defaultIcsFilter,
   excludeHeaders,
   getDAVAttribute,
-  urlContains,
-  validateISO8601TimeRange,
+  urlMatches,
+  ensureTrailingSlash,
+  defaultIcsFilter,
+  validateTimeRange,
 } from './util/requestHelpers';
+import { getDAVUrlKey } from './util/syncHelpers';
+import { assertDAVDiscovery, assertDAVObjectResponses, getDAVText } from './util/responseHelpers';
 import { findMissingFieldNames, hasFields } from './util/typeHelpers';
 
 const debug = getLogger('tsdav:calendar');
+
+const extractComponentNames = (compSet: unknown): string[] => {
+  let names: (string | undefined)[] = [];
+  if (Array.isArray(compSet)) {
+    names = compSet.map((sc: any) => sc?._attributes?.name);
+  } else if (compSet && typeof compSet === 'object') {
+    names = [(compSet as any)._attributes?.name];
+  }
+  return names.filter((n): n is string => typeof n === 'string' && n.length > 0);
+};
 
 export const fetchCalendarUserAddresses = async (params: {
   account: DAVAccount;
@@ -42,16 +58,26 @@ export const fetchCalendarUserAddresses = async (params: {
     props: { [`${DAVNamespaceShort.CALDAV}:calendar-user-address-set`]: {} },
     depth: '0',
     headers: excludeHeaders(headers, headersToExclude),
+    headersToExclude,
     fetchOptions,
     fetch: fetchOverride,
   });
 
-  const matched = responses.find((r) => urlContains(account.principalUrl, r.href));
+  const matched = responses.find((r) => urlMatches(account.principalUrl, r.href, account.rootUrl));
   if (!matched || !matched.ok) {
     throw new Error('cannot find calendarUserAddresses');
   }
 
-  const addresses = matched?.props?.calendarUserAddressSet?.href?.filter(Boolean) || [];
+  const rawHrefs = matched?.props?.calendarUserAddressSet?.href;
+  let hrefArray: unknown[] = [];
+  if (Array.isArray(rawHrefs)) {
+    hrefArray = rawHrefs;
+  } else if (rawHrefs) {
+    hrefArray = [rawHrefs];
+  }
+  const addresses: string[] = hrefArray.filter(
+    (h: unknown): h is string => typeof h === 'string' && h.length > 0,
+  );
 
   debug(`Fetched calendar user addresses ${addresses}`);
   return addresses;
@@ -97,6 +123,7 @@ export const calendarQuery = async (params: {
     defaultNamespace: DAVNamespaceShort.CALDAV,
     depth,
     headers: excludeHeaders(headers, headersToExclude),
+    headersToExclude,
     fetchOptions,
     fetch: fetchOverride,
   });
@@ -140,6 +167,7 @@ export const calendarMultiGet = async (params: {
     defaultNamespace: DAVNamespaceShort.CALDAV,
     depth,
     headers: excludeHeaders(headers, headersToExclude),
+    headersToExclude,
     fetchOptions,
     fetch: fetchOverride,
   });
@@ -182,6 +210,7 @@ export const makeCalendar = async (params: {
         },
       },
     },
+    headersToExclude,
     fetchOptions,
     fetch: fetchOverride,
   });
@@ -217,56 +246,65 @@ export const fetchCalendars = async (params?: {
 
   const res = await propfind({
     url: account.homeUrl,
-    props: customProps ?? {
-      [`${DAVNamespaceShort.CALDAV}:calendar-description`]: {},
-      [`${DAVNamespaceShort.CALDAV}:calendar-timezone`]: {},
-      [`${DAVNamespaceShort.DAV}:displayname`]: {},
-      [`${DAVNamespaceShort.CALDAV_APPLE}:calendar-color`]: {},
-      [`${DAVNamespaceShort.CALENDAR_SERVER}:getctag`]: {},
+    props: {
+      ...(customProps ?? {
+        [`${DAVNamespaceShort.CALDAV}:calendar-description`]: {},
+        [`${DAVNamespaceShort.CALDAV}:calendar-timezone`]: {},
+        [`${DAVNamespaceShort.DAV}:displayname`]: {},
+        [`${DAVNamespaceShort.CALDAV_APPLE}:calendar-color`]: {},
+        [`${DAVNamespaceShort.CALENDAR_SERVER}:getctag`]: {},
+        [`${DAVNamespaceShort.DAV}:resourcetype`]: {},
+        [`${DAVNamespaceShort.CALDAV}:supported-calendar-component-set`]: {},
+        [`${DAVNamespaceShort.DAV}:sync-token`]: {},
+      }),
       [`${DAVNamespaceShort.DAV}:resourcetype`]: {},
       [`${DAVNamespaceShort.CALDAV}:supported-calendar-component-set`]: {},
-      [`${DAVNamespaceShort.DAV}:sync-token`]: {},
     },
     depth: '1',
     headers: excludeHeaders(headers, headersToExclude),
+    headersToExclude,
     fetchOptions,
     fetch: fetchOverride,
   });
+
+  assertDAVDiscovery(res, 'Calendar discovery failed');
 
   return Promise.all(
     res
       .filter((r) => Object.keys(r.props?.resourcetype ?? {}).includes('calendar'))
       .filter((rc) => {
-        // filter out none iCal format calendars.
-        const components: ICALObjects[] = Array.isArray(
-          rc.props?.supportedCalendarComponentSet?.comp,
-        )
-          ? rc.props?.supportedCalendarComponentSet.comp.map((sc: any) => sc._attributes.name)
-          : [rc.props?.supportedCalendarComponentSet?.comp?._attributes.name];
-        return components.some((c) => Object.values(ICALObjects).includes(c));
+        // Filter out non-iCal calendars when components are declared. Some servers
+        // (e.g. Purelymail) omit `supported-calendar-component-set` despite RFC 4791
+        // § 5.2.3 requiring it. When no usable component names come back, fall back to
+        // accepting the calendar — the previous filter already established it's a
+        // `<calendar/>` resourcetype, so we have independent evidence it's a calendar.
+        const components = extractComponentNames(rc.props?.supportedCalendarComponentSet?.comp);
+        return (
+          components.length === 0 ||
+          components.some((c) => Object.values(ICALObjects).includes(c as ICALObjects))
+        );
       })
       .map((rs) => {
         // debug(`Found calendar ${rs.props?.displayname}`);
         const description = rs.props?.calendarDescription;
         const timezone = rs.props?.calendarTimezone;
+        const compSet = rs.props?.supportedCalendarComponentSet?.comp;
+        const projectedEntries = Object.entries(rs.props ?? {}).filter(
+          ([key]) => projectedProps?.[key],
+        );
         return {
           description: typeof description === 'string' ? description : '',
           timezone: typeof timezone === 'string' ? timezone : '',
-          url: new URL(rs.href ?? '', account.rootUrl ?? '').href,
-          ctag: rs.props?.getctag,
+          url: new URL(rs.href ?? '', ensureTrailingSlash(account.rootUrl ?? '')).href,
+          ctag: getDAVText(rs.props?.getctag),
           calendarColor: rs.props?.calendarColor,
-          displayName: rs.props?.displayname._cdata ?? rs.props?.displayname,
-          components: Array.isArray(rs.props?.supportedCalendarComponentSet.comp)
-            ? rs.props?.supportedCalendarComponentSet.comp.map((sc: any) => sc._attributes.name)
-            : [rs.props?.supportedCalendarComponentSet.comp?._attributes.name],
-          resourcetype: Object.keys(rs.props?.resourcetype),
-          syncToken: rs.props?.syncToken,
-          ...conditionalParam(
-            'projectedProps',
-            Object.fromEntries(
-              Object.entries(rs.props ?? {}).filter(([key]) => projectedProps?.[key]),
-            ),
-          ),
+          displayName: getDAVText(rs.props?.displayname),
+          components: extractComponentNames(compSet),
+          resourcetype: Object.keys(rs.props?.resourcetype ?? {}),
+          syncToken: getDAVText(rs.props?.syncToken),
+          ...(projectedProps && projectedEntries.length > 0
+            ? { projectedProps: Object.fromEntries(projectedEntries) }
+            : {}),
         };
       })
       .map(async (cal) => ({
@@ -274,6 +312,7 @@ export const fetchCalendars = async (params?: {
         reports: await supportedReportSet({
           collection: cal,
           headers: excludeHeaders(headers, headersToExclude),
+          headersToExclude,
           fetchOptions,
           fetch: fetchOverride,
         }),
@@ -308,8 +347,9 @@ export const fetchCalendarObjects = async (params: {
     fetch: fetchOverride,
   } = params;
 
+  if (expand && !timeRange) throw new Error('timeRange is required when expand is true');
   if (timeRange) {
-    validateISO8601TimeRange(timeRange.start, timeRange.end);
+    validateTimeRange(timeRange);
   }
   debug(`Fetching calendar objects from ${calendar?.url}`);
   const requiredFields: Array<'url'> = ['url'];
@@ -325,7 +365,7 @@ export const fetchCalendarObjects = async (params: {
     );
   }
 
-  // default to fetch all
+  // Default to events; full collection sync supplies a VCALENDAR-only filter.
   const filters: ElementCompact = customFilters ?? [
     {
       'comp-filter': {
@@ -358,10 +398,9 @@ export const fetchCalendarObjects = async (params: {
   ];
 
   let initialResponses: DAVResponse[] = [];
-  const calendarObjectUrls = (
-    objectUrls ??
-    // fetch all objects of the calendar
-    (initialResponses = await calendarQuery({
+  // fetch all objects of the calendar
+  if (!objectUrls) {
+    initialResponses = await calendarQuery({
       url: calendar.url,
       props: {
         [`${DAVNamespaceShort.DAV}:getetag`]: {},
@@ -387,14 +426,24 @@ export const fetchCalendarObjects = async (params: {
       filters,
       depth: '1',
       headers: excludeHeaders(headers, headersToExclude),
+      headersToExclude,
       fetchOptions,
       fetch: fetchOverride,
-    })).map((res) => res.href ?? '')
-  )
-    .map((url) => (url.startsWith('http') || !url ? url : new URL(url, calendar.url).href)) // patch up to full url if url is not full
-    .filter(urlFilter) // custom filter function on calendar objects
-    .map((url) => new URL(url).pathname); // obtain pathname of the url
+    });
+  }
 
+  const calendarObjectUrls = (objectUrls ?? initialResponses.map((res) => res.href ?? ''))
+    .filter((url): url is string => typeof url === 'string' && url.trim().length > 0)
+    .map((url) =>
+      url.startsWith('http') ? url : new URL(url, ensureTrailingSlash(calendar.url)).href,
+    ) // patch up to full url if url is not full
+    .filter(urlFilter) // custom filter function on calendar objects
+    .map((url) => {
+      const parsedUrl = new URL(url);
+      return `${parsedUrl.pathname}${parsedUrl.search}`;
+    }); // obtain the path and query of the url
+
+  const targetUrls = new Set(calendarObjectUrls.map((url) => getDAVUrlKey(url, calendar.url)));
   let calendarObjectResults: DAVResponse[] = [];
 
   if (calendarObjectUrls.length > 0) {
@@ -402,7 +451,7 @@ export const fetchCalendarObjects = async (params: {
       calendarObjectResults = initialResponses.filter((res) => {
         const fullUrl = (res.href ?? '').startsWith('http')
           ? res.href
-          : new URL(res.href ?? '', calendar.url).href;
+          : new URL(res.href ?? '', ensureTrailingSlash(calendar.url)).href;
         return urlFilter(fullUrl ?? '');
       });
     } else if (!useMultiGet) {
@@ -432,8 +481,15 @@ export const fetchCalendarObjects = async (params: {
         filters,
         depth: '1',
         headers: excludeHeaders(headers, headersToExclude),
+        headersToExclude,
         fetchOptions,
         fetch: fetchOverride,
+      });
+      calendarObjectResults = calendarObjectResults.filter((res) => {
+        const fullUrl = (res.href ?? '').startsWith('http')
+          ? (res.href ?? '')
+          : new URL(res.href ?? '', ensureTrailingSlash(calendar.url)).href;
+        return targetUrls.has(getDAVUrlKey(fullUrl, calendar.url));
       });
     } else {
       calendarObjectResults = await calendarMultiGet({
@@ -462,15 +518,23 @@ export const fetchCalendarObjects = async (params: {
         objectUrls: calendarObjectUrls,
         depth: '1',
         headers: excludeHeaders(headers, headersToExclude),
+        headersToExclude,
         fetchOptions,
         fetch: fetchOverride,
       });
     }
   }
 
+  assertDAVObjectResponses(
+    calendarObjectResults,
+    'calendarData',
+    calendarObjectUrls,
+    calendar.url,
+    'Calendar object fetch failed',
+  );
   return calendarObjectResults.map((res) => ({
-    url: new URL(res.href ?? '', calendar.url).href,
-    etag: `${res.props?.getetag}`,
+    url: new URL(res.href ?? '', ensureTrailingSlash(calendar.url)).href,
+    etag: getDAVText(res.props?.getetag),
     data: res.props?.calendarData?._cdata ?? res.props?.calendarData,
   }));
 };
@@ -495,7 +559,7 @@ export const createCalendarObject = async (params: {
   } = params;
 
   return createObject({
-    url: new URL(filename, calendar.url).href,
+    url: new URL(filename, ensureTrailingSlash(calendar.url)).href,
     data: iCalString,
     headers: excludeHeaders(
       {
@@ -505,6 +569,7 @@ export const createCalendarObject = async (params: {
       },
       headersToExclude,
     ),
+    headersToExclude,
     fetchOptions,
     fetch: fetchOverride,
   });
@@ -535,6 +600,7 @@ export const updateCalendarObject = async (params: {
       },
       headersToExclude,
     ),
+    headersToExclude,
     fetchOptions,
     fetch: fetchOverride,
   });
@@ -558,6 +624,7 @@ export const deleteCalendarObject = async (params: {
     url: calendarObject.url,
     etag: calendarObject.etag,
     headers: excludeHeaders(headers, headersToExclude),
+    headersToExclude,
     fetchOptions,
     fetch: fetchOverride,
   });
@@ -592,67 +659,95 @@ export const syncCalendars: SyncCalendars = async (params: {
   const remoteCalendars = await fetchCalendars({
     account,
     headers: excludeHeaders(headers, headersToExclude),
+    headersToExclude,
     fetchOptions,
     fetch: fetchOverride,
   });
 
-  // no existing url
-  const created = remoteCalendars.filter((rc) =>
-    localCalendars.every((lc) => !urlContains(lc.url, rc.url)),
-  );
-  debug(`new calendars: ${created.map((cc) => cc.displayName)}`);
-
-  // have same url, but syncToken/ctag different
-  const updated = localCalendars.reduce<DAVCalendar[]>((prev, curr) => {
-    const found = remoteCalendars.find((rc) => urlContains(rc.url, curr.url));
-    if (
-      found &&
-      ((found.syncToken && `${found.syncToken}` !== `${curr.syncToken}`) ||
-        (found.ctag && `${found.ctag}` !== `${curr.ctag}`))
-    ) {
-      return [...prev, found];
-    }
-    return prev;
-  }, []);
-  debug(`updated calendars: ${updated.map((cc) => cc.displayName)}`);
+  const baseUrl = account.rootUrl ?? account.homeUrl ?? account.serverUrl;
+  const localByUrl = new Map(localCalendars.map((cal) => [getDAVUrlKey(cal.url, baseUrl), cal]));
+  const remoteByUrl = new Map(remoteCalendars.map((cal) => [getDAVUrlKey(cal.url, baseUrl), cal]));
+  const created = remoteCalendars.filter((cal) => !localByUrl.has(getDAVUrlKey(cal.url, baseUrl)));
+  const updated: Array<{ local: DAVCalendar; remote: DAVCalendar }> = [];
+  const unchanged: DAVCalendar[] = [];
+  const deleted: DAVCalendar[] = [];
+  for (const local of localCalendars) {
+    const remote = remoteByUrl.get(getDAVUrlKey(local.url, baseUrl));
+    if (!remote) deleted.push(local);
+    else if (
+      (!remote.syncToken && !remote.ctag) ||
+      (remote.syncToken && remote.syncToken !== local.syncToken) ||
+      (remote.ctag && remote.ctag !== local.ctag)
+    )
+      updated.push({ local, remote });
+    else unchanged.push(local);
+  }
+  debug(`updated calendars: ${updated.map(({ remote }) => remote.displayName)}`);
 
   const updatedWithObjects: DAVCalendar[] = await Promise.all(
-    updated.map(async (u) => {
+    updated.map(async ({ local, remote }) => {
+      const fetchObjects = async (fetchParams?: {
+        collection: DAVCalendar;
+        headers?: Record<string, string>;
+        headersToExclude?: string[];
+        fetchOptions?: RequestInit;
+        fetch?: typeof fetch;
+      }): Promise<DAVCalendarObject[]> => {
+        if (!fetchParams) return [];
+        const { collection, ...requestParams } = fetchParams;
+        return fetchCalendarObjects({
+          ...requestParams,
+          calendar: collection,
+          filters: { 'comp-filter': { _attributes: { name: 'VCALENDAR' } } },
+          urlFilter: (url) =>
+            getDAVUrlKey(url, collection.url) !== getDAVUrlKey(collection.url, collection.url),
+        });
+      };
+      const collection: DAVCalendar = {
+        ...remote,
+        ctag: local.ctag,
+        syncToken: local.syncToken,
+        objects: local.objects,
+        objectMultiGet: calendarMultiGet,
+        fetchObjects,
+      };
       const result = await smartCollectionSync({
-        collection: { ...u, objectMultiGet: calendarMultiGet } as any,
-        method: 'webdav',
+        collection,
+        detailedResult: false,
         headers: excludeHeaders(headers, headersToExclude),
+        headersToExclude,
         account,
         fetchOptions,
         fetch: fetchOverride,
       });
-      return result;
+      return {
+        ...result,
+        ctag: remote.reports?.includes('syncCollection')
+          ? (remote.ctag ?? result.ctag)
+          : (result.ctag ?? remote.ctag),
+        syncToken: remote.reports?.includes('syncCollection')
+          ? result.syncToken
+          : (remote.syncToken ?? result.syncToken),
+      };
     }),
   );
-  // does not present in remote
-  const deleted = localCalendars.filter((cal) =>
-    remoteCalendars.every((rc) => !urlContains(rc.url, cal.url)),
-  );
-  debug(`deleted calendars: ${deleted.map((cc) => cc.displayName)}`);
-
-  const unchanged = localCalendars.filter((cal) =>
-    remoteCalendars.some(
-      (rc) =>
-        urlContains(rc.url, cal.url) &&
-        ((rc.syncToken && `${rc.syncToken}` !== `${cal.syncToken}`) ||
-          (rc.ctag && `${rc.ctag}` !== `${cal.ctag}`)),
-    ),
-  );
-  // debug(`unchanged calendars: ${unchanged.map((cc) => cc.displayName)}`);
-
   return detailedResult
     ? {
         created,
-        updated,
+        updated: updatedWithObjects,
         deleted,
       }
     : [...unchanged, ...created, ...updatedWithObjects];
 };
+
+export const syncCalendarsDetailed: SyncCalendarsDetailed = async (params: {
+  oldCalendars: DAVCalendar[];
+  headers?: Record<string, string>;
+  headersToExclude?: string[];
+  account?: DAVAccount;
+  fetchOptions?: RequestInit;
+  fetch?: typeof fetch;
+}): Promise<SyncCalendarsDetailedResult> => syncCalendars({ ...params, detailedResult: true });
 
 export const freeBusyQuery = async (params: {
   url: string;
@@ -673,11 +768,10 @@ export const freeBusyQuery = async (params: {
     fetch: fetchOverride,
   } = params;
 
-  if (timeRange) {
-    validateISO8601TimeRange(timeRange.start, timeRange.end);
-  } else {
+  if (!timeRange) {
     throw new Error('timeRange is required');
   }
+  validateTimeRange(timeRange);
 
   const result = await collectionQuery({
     url,
@@ -695,8 +789,13 @@ export const freeBusyQuery = async (params: {
     defaultNamespace: DAVNamespaceShort.CALDAV,
     depth,
     headers: excludeHeaders(headers, headersToExclude),
+    headersToExclude,
     fetchOptions,
     fetch: fetchOverride,
   });
-  return result[0];
+  const response = result[0];
+  if (!response) {
+    throw new Error('freeBusyQuery returned no response');
+  }
+  return response;
 };

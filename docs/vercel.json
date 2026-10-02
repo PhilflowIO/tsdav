@@ -1,6 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "cleanUrls": false,
+  "installCommand": "pnpm install --frozen-lockfile",
   "headers": [
     {
       "source": "/(.*)\\.md",
@@ -36,6 +37,10 @@
         }
       ]
     }
+  ],
+  "redirects": [
+    { "source": "/", "destination": "/docs/", "permanent": true },
+    { "source": "/docs/intro", "destination": "/docs/", "permanent": true }
   ],
   "rewrites": [
     { "source": "/docs/:path(.*)\\.md", "destination": "/:path.md" },

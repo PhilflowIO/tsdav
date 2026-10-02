@@ -1,3 +1,4 @@
+import { test, expect } from 'vitest';
 import { camelCase } from '../../util/camelCase';
 
 test('camelCase should convert snakeCase to camelCase', () => {

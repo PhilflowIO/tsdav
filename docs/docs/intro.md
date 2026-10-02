@@ -1,5 +1,6 @@
 ---
 sidebar_position: 1
+slug: /
 ---
 
 # Intro
@@ -10,16 +11,21 @@ It's very common to be used for cloud storage(limited support), as well as calen
 
 ### Cloud provider support status
 
-| Provider name | WEBDAV | CALDAV | CARDDAV |
-| ------------- | ------ | ------ | ------- |
-| Apple         | ✅     | ✅     | ✅      |
-| Google        | ✅     | ✅     | ✅      |
-| Fastmail      | ✅     | ✅     | ✅      |
-| Nextcloud     | ✅     | ✅     | ✅      |
-| Baikal        | ✅     | ✅     | ✅      |
-| ZOHO          | ✅     | ✅     | ✅      |
-| DAViCal       | ✅     | ✅     | ⛔️      |
-| Forward Email | ⛔️     | ✅     | ✅      |
+| Provider name | CalDAV | CardDAV |
+| ------------- | ------ | ------- |
+| Apple         | ✅     | ✅      |
+| Google        | ✅     | ✅      |
+| Fastmail      | ✅     | ✅      |
+| Nextcloud     | ✅     | ✅      |
+| Baikal        | ✅     | ✅      |
+| ZOHO          | ✅     | ✅      |
+| DAViCal       | ✅     | ⛔️      |
+| Forward Email | ✅     | ✅      |
+
+These entries describe calendar and contact interoperability. Support for individual WebDAV methods
+varies by server; they do not establish general file-storage or collection-management support.
+Google, for example, excludes `MKCOL`, `MKCALENDAR`, `COPY`, `MOVE`, `LOCK`, and `UNLOCK` from its
+[CalDAV implementation](https://developers.google.com/workspace/calendar/caldav/v2/guide).
 
 For more information on cloud providers, go to [cloud providers](./cloud%20providers.md) for more information.
 
@@ -41,7 +47,7 @@ Use the ESM bundle in modern browsers:
 
 ```html
 <script type="module">
-  import { createDAVClient } from 'https://unpkg.com/tsdav/dist/tsdav.esm.js';
+  import { createDAVClient } from 'https://unpkg.com/tsdav/dist/tsdav.js';
 
   const client = await createDAVClient({
     serverUrl: 'https://caldav.icloud.com',
@@ -60,6 +66,44 @@ Use the ESM bundle in modern browsers:
 
 Browser requests to CalDAV/CardDAV endpoints are often blocked by CORS. Prefer running
 tsdav in a server environment, proxying requests through your backend, or using a [custom transport](#custom-transport-electroncors).
+
+### Bun
+
+`tsdav` runs under [Bun](https://bun.sh) without any additional configuration.
+Install and import as you would under Node.js:
+
+```bash
+bun add tsdav
+```
+
+```ts
+import { createDAVClient } from 'tsdav';
+```
+
+Bun's built-in `fetch` is used automatically.
+
+### Deno
+
+`tsdav` is consumable under [Deno](https://deno.com) via the `npm:` specifier
+in Deno 2.x and later:
+
+```ts
+import { createDAVClient } from 'npm:tsdav';
+
+const client = await createDAVClient({
+  serverUrl: 'https://caldav.icloud.com',
+  credentials: {
+    username: Deno.env.get('APPLE_ID')!,
+    password: Deno.env.get('APPLE_APP_PASSWORD')!,
+  },
+  authMethod: 'Basic',
+  defaultAccountType: 'caldav',
+});
+```
+
+Run with at minimum `--allow-net` (for CalDAV/CardDAV servers) and
+`--allow-env` (if you read credentials from the environment). Deno's native
+`fetch` is used automatically.
 
 ### Cloudflare Workers
 
@@ -241,16 +285,15 @@ const calendarObjects = await client.fetchCalendarObjects({
 ```ts
 const calendarObjects = await client.fetchCalendarObjects({
   calendar: myCalendar,
-  calendarObjectUrls: urlArray,
+  objectUrls: urlArray,
 });
 ```
 
 ##### Get calendars changes from remote
 
 ```ts
-const { created, updated, deleted } = await client.syncCalendars({
-  calendars: myCalendars,
-  detailedResult: true,
+const { created, updated, deleted } = await client.syncCalendarsDetailed({
+  oldCalendars: myCalendars,
 });
 ```
 
@@ -258,7 +301,7 @@ const { created, updated, deleted } = await client.syncCalendars({
 
 ```ts
 const { created, updated, deleted } = (
-  await client.smartCollectionSync({
+  await client.smartCollectionSyncDetailed({
     collection: {
       url: localCalendar.url,
       ctag: localCalendar.ctag,
@@ -267,7 +310,6 @@ const { created, updated, deleted } = (
       objectMultiGet: client.calendarMultiGet,
     },
     method: 'webdav',
-    detailedResult: true,
   })
 ).objects;
 ```

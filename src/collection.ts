@@ -5,12 +5,37 @@ import { ElementCompact } from 'xml-js';
 import { DAVNamespace, DAVNamespaceShort } from './consts';
 import { davRequest, propfind } from './request';
 import { DAVDepth, DAVResponse } from './types/DAVTypes';
-import { SmartCollectionSync } from './types/functionsOverloads';
+import {
+  SmartCollectionSync,
+  SmartCollectionSyncDetailed,
+  SmartCollectionSyncDetailedResult,
+} from './types/functionsOverloads';
 import { DAVAccount, DAVCollection, DAVObject } from './types/models';
-import { cleanupFalsy, excludeHeaders, getDAVAttribute, urlContains } from './util/requestHelpers';
-import { findMissingFieldNames, hasFields, RequireAndNotNullSome } from './util/typeHelpers';
+import {
+  cleanupFalsy,
+  excludeHeaders,
+  getDAVAttribute,
+  urlMatches,
+  ensureTrailingSlash,
+} from './util/requestHelpers';
+import { diffDAVObjects, getDAVUrlKey } from './util/syncHelpers';
+import { assertDAVObjectResponses, getDAVText } from './util/responseHelpers';
+import {
+  findMissingFieldNames,
+  hasFields,
+  hasOwn,
+  RequireAndNotNullSome,
+} from './util/typeHelpers';
 
 const debug = getLogger('tsdav:collection');
+
+const resolveDAVHref = (href: string, baseUrl: string): string => {
+  try {
+    return new URL(href, ensureTrailingSlash(baseUrl)).href;
+  } catch {
+    return href;
+  }
+};
 
 export const collectionQuery = async (params: {
   url: string;
@@ -40,25 +65,75 @@ export const collectionQuery = async (params: {
       namespace: defaultNamespace,
       body,
     },
+    headersToExclude,
     fetchOptions,
     fetch: fetchOverride,
   });
+
+  // RFC 4791 §7.8: an empty calendar-query is HTTP 207 with an empty
+  // <D:multistatus/>. Some servers instead return a single collection-level
+  // 404 with no propstat ("No resources found"). Restrict this compatibility
+  // workaround to calendar queries and the queried collection. HTTP-level errors keep
+  // `raw` as a string; parsed 207 members set `raw` to the xml-js tree.
+  const emptyNotFound = queryResults[0];
+  if (
+    defaultNamespace === DAVNamespaceShort.CALDAV &&
+    body?.['calendar-query'] != null &&
+    queryResults.length === 1 &&
+    emptyNotFound &&
+    emptyNotFound.status === 404 &&
+    urlMatches(url, emptyNotFound.href, url) &&
+    !emptyNotFound.error &&
+    Object.keys(emptyNotFound.props ?? {}).length === 0 &&
+    typeof emptyNotFound.raw === 'object' &&
+    emptyNotFound.raw !== null &&
+    emptyNotFound.raw.multistatus?.response?.propstat == null
+  ) {
+    return [];
+  }
 
   const errorResponse = queryResults.find((res) => !res.ok || (res.status && res.status >= 400));
   if (errorResponse) {
     throw new Error(
       `Collection query failed: ${errorResponse.status} ${errorResponse.statusText}. ${
-        errorResponse.raw ? `Raw response: ${errorResponse.raw}` : ''
+        typeof errorResponse.raw === 'string'
+          ? `Raw response: ${errorResponse.raw.slice(0, 4096)}`
+          : ''
       }`,
     );
   }
 
+  if (
+    (body?.['calendar-query'] ||
+      body?.['calendar-multiget'] ||
+      body?.['addressbook-query'] ||
+      body?.['addressbook-multiget']) &&
+    queryResults.some((response) => !response.raw?.multistatus)
+  ) {
+    throw new Error('Collection query failed: expected a DAV multistatus response');
+  }
+  if (
+    (body?.['calendar-query'] ||
+      body?.['calendar-multiget'] ||
+      body?.['addressbook-query'] ||
+      body?.['addressbook-multiget']) &&
+    queryResults.some(
+      (response) =>
+        response.raw?.multistatus?.response &&
+        (typeof response.href !== 'string' || !response.href),
+    )
+  ) {
+    throw new Error('Collection query failed: missing href in DAV response');
+  }
+  const firstQueryResult = queryResults[0];
   // empty query result
   if (
     queryResults.length === 1 &&
-    !queryResults[0].raw &&
-    queryResults[0].status &&
-    queryResults[0].status < 300
+    firstQueryResult &&
+    (!firstQueryResult.raw ||
+      (firstQueryResult.raw.multistatus && !firstQueryResult.raw.multistatus.response)) &&
+    firstQueryResult.status &&
+    firstQueryResult.status < 300
   ) {
     return [];
   }
@@ -93,6 +168,13 @@ export const makeCollection = async (params: {
       body: props
         ? {
             mkcol: {
+              _attributes: getDAVAttribute([
+                DAVNamespace.DAV,
+                DAVNamespace.CALDAV,
+                DAVNamespace.CARDDAV,
+                DAVNamespace.CALENDAR_SERVER,
+                DAVNamespace.CALDAV_APPLE,
+              ]),
               set: {
                 prop: props,
               },
@@ -100,6 +182,7 @@ export const makeCollection = async (params: {
           }
         : undefined,
     },
+    headersToExclude,
     fetchOptions,
     fetch: fetchOverride,
   });
@@ -120,14 +203,23 @@ export const supportedReportSet = async (params: {
     },
     depth: '0',
     headers: excludeHeaders(headers, headersToExclude),
+    headersToExclude,
     fetchOptions,
     fetch: fetchOverride,
   });
-  return (
-    res[0]?.props?.supportedReportSet?.supportedReport?.map(
-      (sr: { report: any }) => Object.keys(sr.report)[0],
-    ) ?? []
-  );
+  // xml-js compact output collapses repeated elements into an array, but a
+  // lone `<supported-report>` element parses to a single object. Normalize to
+  // an array so downstream `.map` never crashes with "map is not a function".
+  const supportedReport = res[0]?.props?.supportedReportSet?.supportedReport;
+  if (!supportedReport) {
+    return [];
+  }
+  const reports = Array.isArray(supportedReport) ? supportedReport : [supportedReport];
+  return reports
+    .map((sr: { report?: Record<string, unknown> }) =>
+      sr?.report ? Object.keys(sr.report)[0] : undefined,
+    )
+    .filter((name): name is string => typeof name === 'string' && name.length > 0);
 };
 
 export const isCollectionDirty = async (params: {
@@ -138,7 +230,7 @@ export const isCollectionDirty = async (params: {
   fetch?: typeof fetch;
 }): Promise<{
   isDirty: boolean;
-  newCtag: string;
+  newCtag: string | undefined;
 }> => {
   const { collection, headers, headersToExclude, fetchOptions = {}, fetch: fetchOverride } = params;
   const responses = await propfind({
@@ -148,16 +240,25 @@ export const isCollectionDirty = async (params: {
     },
     depth: '0',
     headers: excludeHeaders(headers, headersToExclude),
+    headersToExclude,
     fetchOptions,
     fetch: fetchOverride,
   });
-  const res = responses.filter((r) => urlContains(collection.url, r.href))[0];
+  const res = responses.find((r) => urlMatches(collection.url, r.href, collection.url));
   if (!res) {
     throw new Error('Collection does not exist on server');
   }
+  const unavailableCtag =
+    res.propStats?.length &&
+    res.propStats.every((stat) => stat.status === 404 && hasOwn(stat.props, 'getctag'));
+  if (!res.ok && !unavailableCtag) {
+    throw new Error(`Collection status check failed: ${res.status} ${res.statusText}`);
+  }
+  const remoteCtag = getDAVText(res.props?.getctag);
   return {
-    isDirty: `${collection.ctag}` !== `${res.props?.getctag}`,
-    newCtag: res.props?.getctag?.toString(),
+    isDirty:
+      collection.ctag == null || remoteCtag == null || `${collection.ctag}` !== `${remoteCtag}`,
+    newCtag: remoteCtag,
   };
 };
 
@@ -203,6 +304,7 @@ export const syncCollection = (params: {
         },
       },
     },
+    headersToExclude,
     fetchOptions,
     fetch: fetchOverride,
   });
@@ -259,21 +361,54 @@ export const smartCollectionSync: SmartCollectionSync = async <T extends DAVColl
       syncLevel: 1,
       syncToken: collection.syncToken,
       headers: excludeHeaders(headers, headersToExclude),
+      headersToExclude,
       fetchOptions,
       fetch: fetchOverride,
     });
 
-    const objectResponses = result.filter((r): r is RequireAndNotNullSome<DAVResponse, 'href'> => {
-      const extName = account.accountType === 'caldav' ? '.ics' : '.vcf';
-      return r.href?.slice(-4) === extName;
-    });
+    const isObjectResponse = (r: DAVResponse): r is RequireAndNotNullSome<DAVResponse, 'href'> => {
+      return (
+        typeof r.href === 'string' &&
+        getDAVUrlKey(r.href, collection.url) !== getDAVUrlKey(collection.url, collection.url) &&
+        !r.props?.resourcetype?.collection
+      );
+    };
+    const errorResponse = result.find(
+      (r) =>
+        (!r.ok || r.status >= 400) &&
+        !(r.status === 404 && !r.propStats?.length && isObjectResponse(r)),
+    );
+    if (errorResponse) {
+      throw new Error(
+        `Collection sync failed: ${errorResponse.status} ${errorResponse.statusText}`,
+      );
+    }
+
+    if (result.some((response) => response.raw && !response.raw.multistatus)) {
+      throw new Error('Collection sync failed: expected a DAV multistatus response');
+    }
+    if (
+      result.some(
+        (response) =>
+          response.raw?.multistatus?.response &&
+          (typeof response.href !== 'string' || !response.href),
+      )
+    ) {
+      throw new Error('Collection sync failed: missing href in DAV response');
+    }
+    const objectResponses = result.filter(isObjectResponse);
 
     const changedObjectUrls = objectResponses.filter((o) => o.status !== 404).map((r) => r.href);
 
     const deletedObjectUrls = objectResponses.filter((o) => o.status === 404).map((r) => r.href);
 
+    const objectMultiGet = collection.objectMultiGet;
+    if (changedObjectUrls.length > 0 && !objectMultiGet) {
+      throw new Error('collection.objectMultiGet is required for webdav sync changes');
+    }
+
     const multiGetObjectResponse = changedObjectUrls.length
-      ? ((await (collection as any)?.objectMultiGet?.({
+      ? ((await objectMultiGet?.({
           url: collection.url,
           props: {
             [`${DAVNamespaceShort.DAV}:getetag`]: {},
@@ -286,15 +421,24 @@ export const smartCollectionSync: SmartCollectionSync = async <T extends DAVColl
           objectUrls: changedObjectUrls,
           depth: '1',
           headers: excludeHeaders(headers, headersToExclude),
+          headersToExclude,
           fetchOptions,
           fetch: fetchOverride,
-        } as any)) ?? [])
+        })) ?? [])
       : [];
+
+    assertDAVObjectResponses(
+      multiGetObjectResponse,
+      account.accountType === 'caldav' ? 'calendarData' : 'addressData',
+      changedObjectUrls,
+      collection.url,
+      'Collection sync multi-get failed',
+    );
 
     const remoteObjects = multiGetObjectResponse.map((res: DAVResponse) => {
       return {
-        url: res.href ?? '',
-        etag: res.props?.getetag,
+        url: resolveDAVHref(res.href ?? '', collection.url),
+        etag: getDAVText(res.props?.getetag),
         data:
           account?.accountType === 'caldav'
             ? (res.props?.calendarData?._cdata ?? res.props?.calendarData)
@@ -304,29 +448,16 @@ export const smartCollectionSync: SmartCollectionSync = async <T extends DAVColl
 
     const localObjects = collection.objects ?? [];
 
-    // no existing url
-    const created: DAVObject[] = remoteObjects.filter((o: DAVObject) =>
-      localObjects.every((lo) => !urlContains(lo.url, o.url)),
-    );
-    // debug(`created objects: ${created.map((o) => o.url).join('\n')}`);
-
-    // have same url, but etag different
-    const updated = localObjects.reduce<DAVObject[]>((prev, curr) => {
-      const found = remoteObjects.find((ro: DAVObject) => urlContains(ro.url, curr.url));
-      if (found && found.etag && found.etag !== curr.etag) {
-        return [...prev, found];
-      }
-      return prev;
-    }, []);
-    // debug(`updated objects: ${updated.map((o) => o.url).join('\n')}`);
-
-    const deleted: DAVObject[] = deletedObjectUrls.map((o) => ({
-      url: o,
+    const deletedObjects: DAVObject[] = deletedObjectUrls.map((url) => ({
+      url: resolveDAVHref(url, collection.url),
       etag: '',
     }));
-    // debug(`deleted objects: ${deleted.map((o) => o.url).join('\n')}`);
-    const unchanged = localObjects.filter((lo) =>
-      remoteObjects.some((ro: DAVObject) => urlContains(lo.url, ro.url) && ro.etag === lo.etag),
+    const { created, updated, deleted, unchanged } = diffDAVObjects(
+      localObjects,
+      remoteObjects,
+      collection.url,
+      true,
+      deletedObjects,
     );
 
     return {
@@ -335,7 +466,7 @@ export const smartCollectionSync: SmartCollectionSync = async <T extends DAVColl
         ? { created, updated, deleted }
         : [...unchanged, ...created, ...updated],
       // all syncToken in the results are the same so we use the first one here
-      syncToken: result[0]?.raw?.multistatus?.syncToken ?? collection.syncToken,
+      syncToken: getDAVText(result[0]?.raw?.multistatus?.syncToken) ?? collection.syncToken,
     };
   }
 
@@ -343,53 +474,69 @@ export const smartCollectionSync: SmartCollectionSync = async <T extends DAVColl
     const { isDirty, newCtag } = await isCollectionDirty({
       collection,
       headers: excludeHeaders(headers, headersToExclude),
+      headersToExclude,
       fetchOptions,
       fetch: fetchOverride,
     });
+
+    // If the collection hasn't changed, skip the expensive fetchObjects call
+    // entirely and return early. The trailing return below handles the
+    // not-dirty case with an empty diff.
+    if (!isDirty) {
+      return detailedResult
+        ? {
+            ...collection,
+            objects: {
+              created: [],
+              updated: [],
+              deleted: [],
+            },
+          }
+        : collection;
+    }
+
     const localObjects = collection.objects ?? [];
+    // The fetchObjects signature is a union of CalDAV/CardDAV variants that
+    // TypeScript cannot narrow from `T extends DAVCollection`. Call via an
+    // explicit any-cast, which preserves runtime behavior. The `fetch`
+    // override MUST be forwarded here so custom transports (Electron,
+    // Workers, KaiOS) still work in the basic/ctag-based sync fallback —
+    // dropping it would silently re-route the request through the global
+    // fetch, breaking those environments.
+    if (!collection.fetchObjects) {
+      throw new Error('collection.fetchObjects is required for basic sync changes');
+    }
+
     const remoteObjects: DAVObject[] =
-      (await (collection as any).fetchObjects?.({
+      (await (
+        collection.fetchObjects as (params: {
+          collection: DAVCollection;
+          headers?: Record<string, string>;
+          headersToExclude?: string[];
+          fetchOptions?: RequestInit;
+          fetch?: typeof globalThis.fetch;
+        }) => Promise<DAVObject[]>
+      )({
         collection,
         headers: excludeHeaders(headers, headersToExclude),
+        headersToExclude,
         fetchOptions,
         fetch: fetchOverride,
-      } as any)) ?? [];
+      })) ?? [];
 
-    // no existing url
-    const created = remoteObjects.filter((ro: DAVObject) =>
-      localObjects.every((lo) => !urlContains(lo.url, ro.url)),
-    );
-    // debug(`created objects: ${created.map((o) => o.url).join('\n')}`);
-
-    // have same url, but etag different
-    const updated = localObjects.reduce<DAVObject[]>((prev, curr) => {
-      const found = remoteObjects.find((ro: DAVObject) => urlContains(ro.url, curr.url));
-      if (found && found.etag && found.etag !== curr.etag) {
-        return [...prev, found];
-      }
-      return prev;
-    }, []);
-    // debug(`updated objects: ${updated.map((o) => o.url).join('\n')}`);
-
-    // does not present in remote
-    const deleted = localObjects.filter((cal) =>
-      remoteObjects.every((ro: DAVObject) => !urlContains(ro.url, cal.url)),
-    );
-    // debug(`deleted objects: ${deleted.map((o) => o.url).join('\n')}`);
-
-    const unchanged = localObjects.filter((lo) =>
-      remoteObjects.some((ro: DAVObject) => urlContains(lo.url, ro.url) && ro.etag === lo.etag),
+    const { created, updated, deleted, unchanged } = diffDAVObjects(
+      localObjects,
+      remoteObjects,
+      collection.url,
     );
 
-    if (isDirty) {
-      return {
-        ...collection,
-        objects: detailedResult
-          ? { created, updated, deleted }
-          : [...unchanged, ...created, ...updated],
-        ctag: newCtag,
-      };
-    }
+    return {
+      ...collection,
+      objects: detailedResult
+        ? { created, updated, deleted }
+        : [...unchanged, ...created, ...updated],
+      ctag: newCtag,
+    };
   }
 
   return detailedResult
@@ -403,3 +550,16 @@ export const smartCollectionSync: SmartCollectionSync = async <T extends DAVColl
       }
     : collection;
 };
+
+export const smartCollectionSyncDetailed: SmartCollectionSyncDetailed = async <
+  T extends DAVCollection,
+>(params: {
+  collection: T;
+  method?: 'basic' | 'webdav';
+  headers?: Record<string, string>;
+  headersToExclude?: string[];
+  account?: DAVAccount;
+  fetchOptions?: RequestInit;
+  fetch?: typeof fetch;
+}): Promise<SmartCollectionSyncDetailedResult<T>> =>
+  smartCollectionSync({ ...params, detailedResult: true });
