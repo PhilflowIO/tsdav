@@ -1,3 +1,12 @@
+## v2.3.5+philflow.6 (PhilflowIO fork)
+
+No change to the library code; `dist/` differs from v2.3.5+philflow.5 only in `dist/package.json`.
+
+##### build
+- `repository` in `package.json` points at the fork (PhilflowIO/tsdav) instead of upstream, so the metadata inside the tarball names the repository it was built from
+- the release workflow attaches the tarball to a GitHub Release only after that file installed on Node 18, 20 and 22; before, the release was public while the check was still running
+- re-running the release workflow for an already released tag completes; it never replaces a released tarball with different content
+
 ## v2.3.5+philflow.5 (PhilflowIO fork)
 
 **Installing this fork.** The fork is not on npm. Each fork tag has a GitHub Release with the packed tarball attached; depend on that URL:
