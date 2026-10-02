@@ -374,7 +374,7 @@ var request_exports = /* @__PURE__ */ __exportAll({
 	propfind: () => propfind,
 	updateObject: () => updateObject
 });
-const debug$6 = getLogger("tsdav:request");
+const debug$7 = getLogger("tsdav:request");
 const parseStatusLine = (statusLine) => {
 	const match = /^\S+\s+(?<status>\d{3})(?:\s+(?<statusText>.*))?$/.exec(statusLine?.trim() ?? "");
 	const status = match?.groups?.status;
@@ -437,7 +437,7 @@ const davRequest = async (params) => {
 	try {
 		result = parseDAVXML(resText);
 	} catch (e) {
-		debug$6(`Failed to parse DAV response XML: ${e.message}`);
+		debug$7(`Failed to parse DAV response XML: ${e.message}`);
 		return [{
 			href: davResponse.url,
 			ok: false,
@@ -638,7 +638,7 @@ var collection_exports = /* @__PURE__ */ __exportAll({
 	supportedReportSet: () => supportedReportSet,
 	syncCollection: () => syncCollection
 });
-const debug$5 = getLogger("tsdav:collection");
+const debug$6 = getLogger("tsdav:collection");
 const resolveDAVHref = (href, baseUrl) => {
 	try {
 		return new URL(href, ensureTrailingSlash(baseUrl)).href;
@@ -770,7 +770,7 @@ const smartCollectionSync = async (params) => {
 		throw new Error(`account must have ${findMissingFieldNames(account, requiredFields)} before smartCollectionSync`);
 	}
 	const syncMethod = method ?? (collection.reports?.includes("syncCollection") ? "webdav" : "basic");
-	debug$5(`smart collection sync with type ${account.accountType} and method ${syncMethod}`);
+	debug$6(`smart collection sync with type ${account.accountType} and method ${syncMethod}`);
 	if (syncMethod === "webdav") {
 		const result = await syncCollection({
 			url: collection.url,
@@ -904,7 +904,7 @@ var addressBook_exports = /* @__PURE__ */ __exportAll({
 	makeAddressBook: () => makeAddressBook,
 	updateVCard: () => updateVCard
 });
-const debug$4 = getLogger("tsdav:addressBook");
+const debug$5 = getLogger("tsdav:addressBook");
 const addressBookQuery = async (params) => {
 	const { url, props, filters, depth, headers, headersToExclude, fetchOptions = {}, fetch: fetchOverride } = params;
 	return collectionQuery({
@@ -966,7 +966,7 @@ const fetchAddressBooks = async (params) => {
 	assertDAVDiscovery(res, "Address book discovery failed");
 	return Promise.all(res.filter((r) => Object.keys(r.props?.resourcetype ?? {}).includes("addressbook")).map((rs) => {
 		const displayName = rs.props?.displayname?._cdata ?? rs.props?.displayname;
-		debug$4(`Found address book named ${typeof displayName === "string" ? displayName : ""},
+		debug$5(`Found address book named ${typeof displayName === "string" ? displayName : ""},
              props: ${JSON.stringify(rs.props)}`);
 		return {
 			url: new URL(rs.href ?? "", ensureTrailingSlash(account.rootUrl ?? "")).href,
@@ -988,7 +988,7 @@ const fetchAddressBooks = async (params) => {
 };
 const fetchVCards = async (params) => {
 	const { addressBook, headers, objectUrls, headersToExclude, urlFilter = (url) => Boolean(url), useMultiGet = true, fetchOptions = {}, fetch: fetchOverride } = params;
-	debug$4(`Fetching vcards from ${addressBook?.url}`);
+	debug$5(`Fetching vcards from ${addressBook?.url}`);
 	const requiredFields = ["url"];
 	if (!addressBook || !hasFields(addressBook, requiredFields)) {
 		if (!addressBook) throw new Error("cannot fetchVCards for undefined addressBook");
@@ -1122,7 +1122,7 @@ var calendar_exports = /* @__PURE__ */ __exportAll({
 	syncCalendarsDetailed: () => syncCalendarsDetailed,
 	updateCalendarObject: () => updateCalendarObject
 });
-const debug$3 = getLogger("tsdav:calendar");
+const debug$4 = getLogger("tsdav:calendar");
 const extractComponentNames = (compSet) => {
 	let names = [];
 	if (Array.isArray(compSet)) names = compSet.map((sc) => sc?._attributes?.name);
@@ -1133,7 +1133,7 @@ const fetchCalendarUserAddresses = async (params) => {
 	const { account, headers, headersToExclude, fetchOptions = {}, fetch: fetchOverride } = params;
 	const requiredFields = ["principalUrl", "rootUrl"];
 	if (!hasFields(account, requiredFields)) throw new Error(`account must have ${findMissingFieldNames(account, requiredFields)} before fetchUserAddresses`);
-	debug$3(`Fetch user addresses from ${account.principalUrl}`);
+	debug$4(`Fetch user addresses from ${account.principalUrl}`);
 	const matched = (await propfind({
 		url: account.principalUrl,
 		props: { [`c:calendar-user-address-set`]: {} },
@@ -1149,7 +1149,7 @@ const fetchCalendarUserAddresses = async (params) => {
 	if (Array.isArray(rawHrefs)) hrefArray = rawHrefs;
 	else if (rawHrefs) hrefArray = [rawHrefs];
 	const addresses = hrefArray.filter((h) => typeof h === "string" && h.length > 0);
-	debug$3(`Fetched calendar user addresses ${addresses}`);
+	debug$4(`Fetched calendar user addresses ${addresses}`);
 	return addresses;
 };
 const calendarQuery = async (params) => {
@@ -1284,7 +1284,7 @@ const fetchCalendarObjects = async (params) => {
 	const { calendar, objectUrls, filters: customFilters, timeRange, headers, expand, urlFilter = defaultIcsFilter, useMultiGet = true, headersToExclude, fetchOptions = {}, fetch: fetchOverride } = params;
 	if (expand && !timeRange) throw new Error("timeRange is required when expand is true");
 	if (timeRange) validateTimeRange(timeRange);
-	debug$3(`Fetching calendar objects from ${calendar?.url}`);
+	debug$4(`Fetching calendar objects from ${calendar?.url}`);
 	const requiredFields = ["url"];
 	if (!calendar || !hasFields(calendar, requiredFields)) {
 		if (!calendar) throw new Error("cannot fetchCalendarObjects for undefined calendar");
@@ -1444,7 +1444,7 @@ const syncCalendars = async (params) => {
 		});
 		else unchanged.push(local);
 	}
-	debug$3(`updated calendars: ${updated.map(({ remote }) => remote.displayName)}`);
+	debug$4(`updated calendars: ${updated.map(({ remote }) => remote.displayName)}`);
 	const updatedWithObjects = await Promise.all(updated.map(async ({ local, remote }) => {
 		const fetchObjects = async (fetchParams) => {
 			if (!fetchParams) return [];
@@ -1524,7 +1524,7 @@ var account_exports = /* @__PURE__ */ __exportAll({
 	fetchPrincipalUrl: () => fetchPrincipalUrl,
 	serviceDiscovery: () => serviceDiscovery
 });
-const debug$2 = getLogger("tsdav:account");
+const debug$3 = getLogger("tsdav:account");
 const getCandidateRootUrls = (serverUrl, discoveredRootUrl) => {
 	const candidates = [
 		discoveredRootUrl,
@@ -1534,7 +1534,7 @@ const getCandidateRootUrls = (serverUrl, discoveredRootUrl) => {
 	return candidates.filter((url, index) => candidates.indexOf(url) === index);
 };
 const serviceDiscovery = async (params) => {
-	debug$2("Service discovery...");
+	debug$3("Service discovery...");
 	const { account, headers, headersToExclude, fetchOptions = {}, fetch: fetchOverride } = params;
 	const requestFetch = fetchOverride ?? fetch;
 	const endpoint = new URL(account.serverUrl);
@@ -1545,7 +1545,7 @@ const serviceDiscovery = async (params) => {
 		if (response.status >= 300 && response.status < 400) {
 			const location = response.headers.get("Location");
 			if (typeof location === "string" && location.length) {
-				debug$2(`Service discovery redirected to ${location}`);
+				debug$3(`Service discovery redirected to ${location}`);
 				return new URL(location, uri).href;
 			}
 		}
@@ -1565,7 +1565,7 @@ const serviceDiscovery = async (params) => {
 		}));
 		if (redirectUrl) return redirectUrl;
 	} catch (err) {
-		debug$2(`Service discovery PROPFIND failed: ${err.stack}`);
+		debug$3(`Service discovery PROPFIND failed: ${err.stack}`);
 	}
 	try {
 		const redirectUrl = extractRedirect(await requestFetch(uri.href, {
@@ -1577,7 +1577,7 @@ const serviceDiscovery = async (params) => {
 		}));
 		if (redirectUrl) return redirectUrl;
 	} catch (err) {
-		debug$2(`Service discovery GET failed: ${err.stack}`);
+		debug$3(`Service discovery GET failed: ${err.stack}`);
 	}
 	return endpoint.href;
 };
@@ -1605,7 +1605,7 @@ const fetchPrincipalUrl = async (params) => {
 	const { account, headers, headersToExclude, fetchOptions = {}, fetch: fetchOverride } = params;
 	const requiredFields = ["rootUrl"];
 	if (!hasFields(account, requiredFields)) throw new Error(`account must have ${findMissingFieldNames(account, requiredFields)} before fetchPrincipalUrl`);
-	debug$2(`Fetching principal url from path ${account.rootUrl}`);
+	debug$3(`Fetching principal url from path ${account.rootUrl}`);
 	const [response] = await propfind({
 		url: account.rootUrl,
 		props: { [`d:current-user-principal`]: {} },
@@ -1616,23 +1616,23 @@ const fetchPrincipalUrl = async (params) => {
 		fetch: fetchOverride
 	});
 	if (!response?.ok) {
-		debug$2(`Fetch principal url failed: ${response?.statusText ?? "empty response"}`);
+		debug$3(`Fetch principal url failed: ${response?.statusText ?? "empty response"}`);
 		if (response?.status === 401) throw new Error(`Invalid credentials: PROPFIND ${account.rootUrl} returned 401 Unauthorized`);
 		throw new Error("cannot find principalUrl");
 	}
 	const principalHref = extractHref(response.props?.currentUserPrincipal?.href);
 	if (!principalHref) {
-		debug$2("Fetch principal url failed: missing current-user-principal href");
+		debug$3("Fetch principal url failed: missing current-user-principal href");
 		throw new Error("cannot find principalUrl");
 	}
-	debug$2(`Fetched principal url ${principalHref}`);
+	debug$3(`Fetched principal url ${principalHref}`);
 	return new URL(principalHref, ensureTrailingSlash(account.rootUrl)).href;
 };
 const fetchHomeUrl = async (params) => {
 	const { account, headers, headersToExclude, fetchOptions = {}, fetch: fetchOverride } = params;
 	const requiredFields = ["principalUrl", "rootUrl"];
 	if (!hasFields(account, requiredFields)) throw new Error(`account must have ${findMissingFieldNames(account, requiredFields)} before fetchHomeUrl`);
-	debug$2(`Fetch home url from ${account.principalUrl}`);
+	debug$3(`Fetch home url from ${account.principalUrl}`);
 	const responses = await propfind({
 		url: account.principalUrl,
 		props: account.accountType === "caldav" ? { [`c:calendar-home-set`]: {} } : { [`card:addressbook-home-set`]: {} },
@@ -1644,16 +1644,16 @@ const fetchHomeUrl = async (params) => {
 	});
 	const matched = responses.find((r) => urlMatches(account.principalUrl, r.href, account.rootUrl));
 	if (!matched || !matched.ok) {
-		debug$2(`Fetch home url failed with status ${matched?.statusText} and error ${JSON.stringify(responses.map((r) => r.error))}`);
+		debug$3(`Fetch home url failed with status ${matched?.statusText} and error ${JSON.stringify(responses.map((r) => r.error))}`);
 		throw new Error("cannot find homeUrl");
 	}
 	const homeHref = extractHref(account.accountType === "caldav" ? matched.props?.calendarHomeSet?.href : matched.props?.addressbookHomeSet?.href);
 	if (!homeHref) {
-		debug$2(`Fetch home url failed: server did not return a ${account.accountType === "caldav" ? "calendar-home-set" : "addressbook-home-set"} href`);
+		debug$3(`Fetch home url failed: server did not return a ${account.accountType === "caldav" ? "calendar-home-set" : "addressbook-home-set"} href`);
 		throw new Error("cannot find homeUrl");
 	}
 	const result = new URL(homeHref, ensureTrailingSlash(account.rootUrl)).href;
-	debug$2(`Fetched home url ${result}`);
+	debug$3(`Fetched home url ${result}`);
 	return result;
 };
 const createAccount = async (params) => {
@@ -1761,7 +1761,7 @@ var todo_exports = /* @__PURE__ */ __exportAll({
 	todoQuery: () => todoQuery,
 	updateTodo: () => updateTodo
 });
-const debug$1 = getLogger("tsdav:todo");
+const debug$2 = getLogger("tsdav:todo");
 const toCalDAVDateTime = (value) => `${new Date(value).toISOString().slice(0, 19).replace(/[-:.]/g, "")}Z`;
 const buildTodoFilter = (timeRange) => [{ "comp-filter": {
 	_attributes: { name: "VCALENDAR" },
@@ -1824,7 +1824,7 @@ const todoMultiGet = async (params) => calendarMultiGet(params);
 const fetchTodos = async (params) => {
 	const { filters, timeRange, calendar } = params;
 	if (timeRange) validateTimeRange(timeRange);
-	debug$1(`Fetching todo objects from ${calendar?.url}`);
+	debug$2(`Fetching todo objects from ${calendar?.url}`);
 	if (!calendar) throw new Error("cannot fetchTodos for undefined calendar");
 	return fetchCalendarObjects({
 		...params,
@@ -1884,7 +1884,7 @@ var authHelpers_exports = /* @__PURE__ */ __exportAll({
 	getOauthHeaders: () => getOauthHeaders,
 	refreshAccessToken: () => refreshAccessToken
 });
-const debug = getLogger("tsdav:authHelper");
+const debug$1 = getLogger("tsdav:authHelper");
 const BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 const NON_LATIN1_BASIC_AUTH_MESSAGE = "The string to be encoded contains characters outside of the Latin1 range.";
 var InvalidCharacterError = class extends Error {
@@ -1943,7 +1943,7 @@ const defaultParam = (fn, params) => (...args) => {
 	return fn(mergedParams);
 };
 const getBasicAuthHeaders = (credentials) => {
-	debug(`Basic auth token generated for user "${credentials.username ?? ""}"`);
+	debug$1(`Basic auth token generated for user "${credentials.username ?? ""}"`);
 	return { authorization: `Basic ${encodeBase64(`${credentials.username}:${credentials.password}`)}` };
 };
 const getBearerAuthHeaders = (credentials) => {
@@ -1965,7 +1965,7 @@ const fetchOauthTokens = async (credentials, fetchOptions, fetchOverride) => {
 		client_id: credentials.clientId,
 		client_secret: credentials.clientSecret
 	});
-	debug(`Fetching oauth tokens from ${credentials.tokenUrl}`);
+	debug$1(`Fetching oauth tokens from ${credentials.tokenUrl}`);
 	const requestFetch = fetchOverride ?? fetch;
 	const { headers: fetchHeaders, ...fetchOptionsWithoutHeaders } = fetchOptions ?? {};
 	const response = await requestFetch(credentials.tokenUrl, {
@@ -1975,7 +1975,7 @@ const fetchOauthTokens = async (credentials, fetchOptions, fetchOverride) => {
 		headers: mergeHeaders({ "content-type": "application/x-www-form-urlencoded" }, fetchHeaders)
 	});
 	if (response.ok) return await response.json();
-	debug(`Fetch Oauth tokens failed with status ${response.status}`);
+	debug$1(`Fetch Oauth tokens failed with status ${response.status}`);
 	return {};
 };
 const refreshAccessToken = async (credentials, fetchOptions, fetchOverride) => {
@@ -2001,7 +2001,7 @@ const refreshAccessToken = async (credentials, fetchOptions, fetchOverride) => {
 		headers: mergeHeaders({ "Content-Type": "application/x-www-form-urlencoded" }, fetchHeaders)
 	});
 	if (response.ok) return await response.json();
-	debug(`Refresh access token failed with status ${response.status}`);
+	debug$1(`Refresh access token failed with status ${response.status}`);
 	return {};
 };
 /**
@@ -2014,7 +2014,7 @@ const refreshAccessToken = async (credentials, fetchOptions, fetchOverride) => {
 * object after this call.
 */
 const getOauthHeaders = async (credentials, fetchOptions, fetchOverride) => {
-	debug("Fetching oauth headers");
+	debug$1("Fetching oauth headers");
 	let tokens = {};
 	let didRefresh = false;
 	if (credentials.accessToken && (credentials.expiration == null && !credentials.refreshToken || credentials.expiration != null && Date.now() < credentials.expiration)) tokens = {
@@ -2030,10 +2030,293 @@ const getOauthHeaders = async (credentials, fetchOptions, fetchOverride) => {
 		if (tokens.refresh_token) credentials.refreshToken = tokens.refresh_token;
 		if (tokens.access_token) credentials.expiration = typeof tokens.expires_in === "number" ? Date.now() + tokens.expires_in * 1e3 : void 0;
 	}
-	debug("Oauth tokens obtained");
+	debug$1("Oauth tokens obtained");
 	return {
 		tokens,
 		headers: tokens.access_token ? { authorization: `Bearer ${tokens.access_token}` } : {}
+	};
+};
+//#endregion
+//#region src/util/md5.ts
+/**
+* MD5 message digest (RFC 1321), returning a lowercase hex string.
+*
+* HTTP Digest authentication still defaults to MD5, but WebCrypto does not
+* implement it. This small implementation keeps Digest auth portable across
+* Node.js, browsers, Bun, Deno and Workers without adding a dependency.
+* It is only used for the Digest handshake, never for anything that needs
+* collision resistance.
+*/
+const SHIFTS = [
+	[
+		7,
+		12,
+		17,
+		22
+	],
+	[
+		5,
+		9,
+		14,
+		20
+	],
+	[
+		4,
+		11,
+		16,
+		23
+	],
+	[
+		6,
+		10,
+		15,
+		21
+	]
+];
+const K = Array.from({ length: 64 }, (_, i) => Math.floor(Math.abs(Math.sin(i + 1)) * 2 ** 32));
+const toHex$1 = (word) => {
+	let hex = "";
+	for (let i = 0; i < 4; i += 1) hex += (word >>> i * 8 & 255).toString(16).padStart(2, "0");
+	return hex;
+};
+const md5 = (input) => {
+	const bytes = new TextEncoder().encode(input);
+	const paddedLength = (bytes.length + 8 >>> 6) + 1 << 6;
+	const buffer = new Uint8Array(paddedLength);
+	buffer.set(bytes);
+	buffer[bytes.length] = 128;
+	const view = new DataView(buffer.buffer);
+	const bitLength = bytes.length * 8;
+	view.setUint32(paddedLength - 8, bitLength >>> 0, true);
+	view.setUint32(paddedLength - 4, Math.floor(bitLength / 2 ** 32), true);
+	let a0 = 1732584193;
+	let b0 = 4023233417;
+	let c0 = 2562383102;
+	let d0 = 271733878;
+	for (let offset = 0; offset < paddedLength; offset += 64) {
+		let a = a0;
+		let b = b0;
+		let c = c0;
+		let d = d0;
+		for (let i = 0; i < 64; i += 1) {
+			let f;
+			let g;
+			if (i < 16) {
+				f = b & c | ~b & d;
+				g = i;
+			} else if (i < 32) {
+				f = d & b | ~d & c;
+				g = (5 * i + 1) % 16;
+			} else if (i < 48) {
+				f = b ^ c ^ d;
+				g = (3 * i + 5) % 16;
+			} else {
+				f = c ^ (b | ~d);
+				g = 7 * i % 16;
+			}
+			const sum = a + f + K[i] + view.getUint32(offset + g * 4, true) | 0;
+			const shift = SHIFTS[i >>> 4][i % 4];
+			a = d;
+			d = c;
+			c = b;
+			b = b + (sum << shift | sum >>> 32 - shift) | 0;
+		}
+		a0 = a0 + a | 0;
+		b0 = b0 + b | 0;
+		c0 = c0 + c | 0;
+		d0 = d0 + d | 0;
+	}
+	return toHex$1(a0) + toHex$1(b0) + toHex$1(c0) + toHex$1(d0);
+};
+//#endregion
+//#region src/util/digestAuth.ts
+const debug = getLogger("tsdav:digestAuth");
+const TOKEN = /[!#$%&'*+.^_`|~0-9A-Za-z-]+/y;
+/**
+* Parse a `WWW-Authenticate` header value into its challenges. `fetch` joins
+* repeated headers with ", ", so one value can hold several challenges.
+*/
+const parseAuthenticateHeader = (value) => {
+	const challenges = [];
+	let current;
+	let pos = 0;
+	const skip = (chars) => {
+		while (pos < value.length && chars.test(value[pos])) pos += 1;
+	};
+	while (pos < value.length) {
+		skip(/[\s,]/);
+		TOKEN.lastIndex = pos;
+		const token = TOKEN.exec(value)?.[0];
+		if (!token) {
+			pos += 1;
+			continue;
+		}
+		pos += token.length;
+		skip(/\s/);
+		if (value[pos] !== "=") {
+			current = {
+				scheme: token.toLowerCase(),
+				params: {}
+			};
+			challenges.push(current);
+			continue;
+		}
+		pos += 1;
+		skip(/\s/);
+		let paramValue = "";
+		if (value[pos] === "\"") {
+			pos += 1;
+			while (pos < value.length && value[pos] !== "\"") {
+				if (value[pos] === "\\") pos += 1;
+				paramValue += value[pos] ?? "";
+				pos += 1;
+			}
+			pos += 1;
+		} else while (pos < value.length && !/[\s,]/.test(value[pos])) {
+			paramValue += value[pos];
+			pos += 1;
+		}
+		if (current) current.params[token.toLowerCase()] = paramValue;
+	}
+	return challenges;
+};
+const SUPPORTED_ALGORITHMS = [
+	"SHA-256",
+	"SHA-256-SESS",
+	"MD5",
+	"MD5-SESS"
+];
+const toDigestChallenge = (params) => {
+	const algorithm = (params.algorithm ?? "MD5").toUpperCase();
+	if (!params.realm || !params.nonce || !SUPPORTED_ALGORITHMS.includes(algorithm)) return;
+	const qopOptions = params.qop?.split(",").map((qop) => qop.trim().toLowerCase());
+	if (qopOptions && !qopOptions.includes("auth")) return;
+	return {
+		realm: params.realm,
+		nonce: params.nonce,
+		opaque: params.opaque,
+		qop: qopOptions ? "auth" : void 0,
+		algorithm,
+		stale: params.stale?.toLowerCase() === "true",
+		userhash: params.userhash?.toLowerCase() === "true"
+	};
+};
+/**
+* Pick the strongest supported Digest challenge from a `WWW-Authenticate`
+* value. Returns undefined when there is none, or when `unlessBasic` is set
+* and the server also accepts Basic.
+*/
+const selectDigestChallenge = (header, { unlessBasic = false } = {}) => {
+	const challenges = parseAuthenticateHeader(header ?? "");
+	if (unlessBasic && challenges.some(({ scheme }) => scheme === "basic")) return;
+	return challenges.filter(({ scheme }) => scheme === "digest").map(({ params }) => toDigestChallenge(params)).filter((challenge) => challenge != null).sort((a, b) => SUPPORTED_ALGORITHMS.indexOf(a.algorithm) - SUPPORTED_ALGORITHMS.indexOf(b.algorithm))[0];
+};
+const toHex = (bytes) => Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+const getCrypto = () => {
+	if (!globalThis.crypto?.subtle) throw new Error("tsdav: Digest authentication requires the WebCrypto API (globalThis.crypto), available in Node.js >= 19, browsers, Bun and Deno.");
+	return globalThis.crypto;
+};
+const hash = async (algorithm, data) => algorithm.startsWith("MD5") ? md5(data) : toHex(new Uint8Array(await getCrypto().subtle.digest("SHA-256", new TextEncoder().encode(data))));
+const quote = (value) => `"${value.replace(/["\\]/g, "\\$&")}"`;
+/**
+* Compute the `Authorization` header value for one request (RFC 7616 §3.4;
+* RFC 2069 form when the challenge carries no qop).
+*/
+const buildDigestAuthorization = async (params) => {
+	const { challenge, username, password, method, uri, cnonce } = params;
+	const { realm, nonce, qop, algorithm } = challenge;
+	const nc = params.nc.toString(16).padStart(8, "0");
+	let ha1 = await hash(algorithm, `${username}:${realm}:${password}`);
+	if (algorithm.endsWith("-SESS")) ha1 = await hash(algorithm, `${ha1}:${nonce}:${cnonce}`);
+	const ha2 = await hash(algorithm, `${method}:${uri}`);
+	const response = await hash(algorithm, qop ? `${ha1}:${nonce}:${nc}:${cnonce}:${qop}:${ha2}` : `${ha1}:${nonce}:${ha2}`);
+	return `Digest ${[
+		`username=${quote(challenge.userhash ? await hash(algorithm, `${username}:${realm}`) : username)}`,
+		`realm=${quote(realm)}`,
+		`uri=${quote(uri)}`,
+		`algorithm=${algorithm.replace("-SESS", "-sess")}`,
+		`nonce=${quote(nonce)}`,
+		...qop ? [
+			`nc=${nc}`,
+			`cnonce=${quote(cnonce)}`,
+			`qop=${qop}`
+		] : [],
+		`response=${quote(response)}`,
+		...challenge.opaque != null ? [`opaque=${quote(challenge.opaque)}`] : [],
+		...challenge.userhash ? ["userhash=true"] : []
+	].join(", ")}`;
+};
+const createCnonce = () => toHex(getCrypto().getRandomValues(/* @__PURE__ */ new Uint8Array(16)));
+const toURL = (input) => {
+	if (input instanceof URL) return input;
+	if (typeof input !== "string") return void 0;
+	try {
+		return new URL(input);
+	} catch {
+		return;
+	}
+};
+const isReplayable = (body) => body == null || typeof body !== "object" || !(typeof body.getReader === "function" || Symbol.asyncIterator in body);
+const createDigestAuthState = (active) => ({
+	active,
+	challenges: /* @__PURE__ */ new Map()
+});
+/**
+* Wrap `fetch` with Digest authentication.
+*
+* - Once a challenge is known for an origin, requests carry a fresh
+*   `Authorization` header up front (incrementing `nc`).
+* - A 401 with a Digest challenge is answered by exactly one retry; this also
+*   covers an expired (`stale=true`) nonce. A 401 on that retry is returned to
+*   the caller as a credentials error.
+* - With an inactive `state` (Basic auth), the wrapper only switches to
+*   Digest when a 401 offers Digest and no Basic. It never falls back from
+*   Digest to Basic.
+*/
+const createDigestFetch = (params) => {
+	const { credentials, fetch: fetchOverride } = params;
+	const requestFetch = fetchOverride ?? fetch;
+	const state = params.state ?? createDigestAuthState(true);
+	const authorize = async (init, origin, method, uri) => {
+		const entry = state.challenges.get(origin);
+		if (!entry) return init;
+		entry.nc += 1;
+		const authorization = await buildDigestAuthorization({
+			challenge: entry.challenge,
+			username: credentials.username ?? "",
+			password: credentials.password ?? "",
+			method,
+			uri,
+			nc: entry.nc,
+			cnonce: createCnonce()
+		});
+		const headers = new Headers(init.headers);
+		headers.set("authorization", authorization);
+		return {
+			...init,
+			headers
+		};
+	};
+	return async (input, init = {}) => {
+		const url = toURL(input);
+		if (!url) return requestFetch(input, init);
+		const method = (init.method ?? "GET").toUpperCase();
+		const uri = `${url.pathname}${url.search}`;
+		const response = await requestFetch(input, state.active ? await authorize(init, url.origin, method, uri) : init);
+		if (response.status !== 401 || !isReplayable(init.body)) return response;
+		const challenge = selectDigestChallenge(response.headers.get("www-authenticate"), { unlessBasic: !state.active });
+		if (!challenge) return response;
+		if (!state.active) {
+			debug("Server only offers Digest authentication, switching from Basic");
+			state.active = true;
+		}
+		debug(`Digest challenge received for ${url.origin}${challenge.stale ? " (stale nonce)" : ""}`);
+		state.challenges.set(url.origin, {
+			challenge,
+			nc: 0
+		});
+		await response.body?.cancel().catch(() => void 0);
+		return requestFetch(input, await authorize(init, url.origin, method, uri));
 	};
 };
 //#endregion
@@ -2051,12 +2334,31 @@ const resolveAuthHeaders = async (client, fetchOptions = client.fetchOptions, fe
 			if (!headers.authorization) throw new Error("OAuth authentication failed: token endpoint returned no access token");
 			return headers;
 		}
-		case "Digest": return { Authorization: `Digest ${client.credentials.digestString}` };
+		case "Digest": return usesDigestString(client.credentials) ? { Authorization: `Digest ${client.credentials.digestString}` } : {};
 		case "Custom":
 			if (!client.authFunction) throw new Error("authMethod 'Custom' requires an authFunction to produce request headers");
 			return await client.authFunction(client.credentials) ?? {};
 		default: throw new Error("Invalid auth method");
 	}
+};
+const usesDigestString = (credentials) => credentials.digestString != null && credentials.password == null;
+const digestStates = /* @__PURE__ */ new WeakMap();
+/**
+* The `fetch` used for a client's DAV requests: Digest clients get the Digest
+* handshake, sharing one challenge state across all their requests.
+*/
+const authFetch = (client, fetchOverride = client.fetchOverride) => {
+	if (client.authMethod !== "Digest" || usesDigestString(client.credentials)) return fetchOverride;
+	let state = digestStates.get(client);
+	if (!state) {
+		state = createDigestAuthState(true);
+		digestStates.set(client, state);
+	}
+	return createDigestFetch({
+		credentials: client.credentials,
+		fetch: fetchOverride,
+		state
+	});
 };
 const createDAVClient = async (params) => {
 	const client = new DAVClient(params);
@@ -2069,7 +2371,7 @@ const createDAVClient = async (params) => {
 		},
 		headers: client.authHeaders,
 		fetchOptions: client.fetchOptions,
-		fetch: client.fetchOverride
+		fetch: authFetch(client)
 	}) : void 0;
 	return {
 		davRequest: client.davRequest.bind(client),
@@ -2152,12 +2454,16 @@ var DAVClient = class {
 			headers: this.authHeaders,
 			account: this.account,
 			fetchOptions: this.fetchOptions,
-			fetch: this.fetchOverride
+			fetch: authFetch(this, params?.fetch)
 		};
 	}
 	async invoke(fn, params) {
 		const defaults = await this.requestDefaults(params);
-		return await defaultParam(fn, defaults)(...[params]);
+		const callParams = params ? {
+			...params,
+			fetch: defaults.fetch
+		} : params;
+		return await defaultParam(fn, defaults)(...[callParams]);
 	}
 	async login(options) {
 		await this.authenticate(true);
@@ -2171,7 +2477,7 @@ var DAVClient = class {
 			loadCollections: options?.loadCollections,
 			loadObjects: options?.loadObjects,
 			fetchOptions: this.fetchOptions,
-			fetch: this.fetchOverride
+			fetch: authFetch(this)
 		}) : void 0;
 	}
 	async davRequest(params0) {
@@ -2185,7 +2491,7 @@ var DAVClient = class {
 				headers: mergeHeaders(defaults.headers, headers)
 			},
 			fetchOptions: fetchOptions ?? this.fetchOptions,
-			fetch: fetchOverride2 ?? this.fetchOverride
+			fetch: authFetch(this, fetchOverride2)
 		});
 	}
 	async createObject(...params) {
@@ -2217,7 +2523,7 @@ var DAVClient = class {
 			loadCollections,
 			loadObjects,
 			fetchOptions: fetchOptions ?? this.fetchOptions,
-			fetch: fetch ?? this.fetchOverride
+			fetch: authFetch(this, fetch)
 		});
 	}
 	async collectionQuery(...params) {
@@ -2338,4 +2644,4 @@ var src_default = {
 	...requestHelpers_exports
 };
 //#endregion
-export { DAVAttributeMap, DAVClient, DAVNamespace, DAVNamespaceShort, ICALObjects, addressBookMultiGet, addressBookQuery, calendarMultiGet, calendarQuery, cleanupFalsy, collectionQuery, createAccount, createCalendarObject, createDAVClient, createObject, createTodo, createVCard, davRequest, src_default as default, deleteCalendarObject, deleteObject, deleteTodo, deleteVCard, ensureTrailingSlash, excludeHeaders, fetchAddressBooks, fetchCalendarObjects, fetchCalendarUserAddresses, fetchCalendars, fetchHomeUrl, fetchOauthTokens, fetchPrincipalUrl, fetchTodos, fetchVCards, freeBusyQuery, getBasicAuthHeaders, getBearerAuthHeaders, getDAVAttribute, getOauthHeaders, isCollectionDirty, makeAddressBook, makeCalendar, makeCollection, mergeHeaders, propfind, refreshAccessToken, serviceDiscovery, smartCollectionSync, smartCollectionSyncDetailed, supportedReportSet, syncCalendars, syncCalendarsDetailed, syncCollection, todoMultiGet, todoQuery, updateCalendarObject, updateObject, updateTodo, updateVCard, urlContains, urlEquals, urlMatches };
+export { DAVAttributeMap, DAVClient, DAVNamespace, DAVNamespaceShort, ICALObjects, addressBookMultiGet, addressBookQuery, calendarMultiGet, calendarQuery, cleanupFalsy, collectionQuery, createAccount, createCalendarObject, createDAVClient, createDigestFetch, createObject, createTodo, createVCard, davRequest, src_default as default, deleteCalendarObject, deleteObject, deleteTodo, deleteVCard, ensureTrailingSlash, excludeHeaders, fetchAddressBooks, fetchCalendarObjects, fetchCalendarUserAddresses, fetchCalendars, fetchHomeUrl, fetchOauthTokens, fetchPrincipalUrl, fetchTodos, fetchVCards, freeBusyQuery, getBasicAuthHeaders, getBearerAuthHeaders, getDAVAttribute, getOauthHeaders, isCollectionDirty, makeAddressBook, makeCalendar, makeCollection, mergeHeaders, propfind, refreshAccessToken, serviceDiscovery, smartCollectionSync, smartCollectionSyncDetailed, supportedReportSet, syncCalendars, syncCalendarsDetailed, syncCollection, todoMultiGet, todoQuery, updateCalendarObject, updateObject, updateTodo, updateVCard, urlContains, urlEquals, urlMatches };

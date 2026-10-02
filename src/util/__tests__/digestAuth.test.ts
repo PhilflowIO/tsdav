@@ -1,0 +1,302 @@
+import { createHash } from 'node:crypto';
+import { describe, expect, it, vi } from 'vitest';
+
+import {
+  buildDigestAuthorization,
+  createDigestAuthState,
+  createDigestFetch,
+  parseAuthenticateHeader,
+  selectDigestChallenge,
+} from '../digestAuth';
+import { createDigestServer, parseDigestParams } from './digestServer';
+
+const md5 = (value: string) => createHash('md5').update(value).digest('hex');
+const credentials = { username: 'digestuser', password: 'digest-test-pw' };
+const multistatus = () =>
+  new Response('<d:multistatus xmlns:d="DAV:"/>', {
+    status: 207,
+    headers: { 'content-type': 'application/xml' },
+  });
+
+describe('parseAuthenticateHeader', () => {
+  it('parses the Baikal default challenge', () => {
+    expect(
+      parseAuthenticateHeader(
+        'Digest realm="BaikalDAV",qop="auth",nonce="6abef27466f7d",opaque="d66d5f0524036afcb61420e358f990ce"',
+      ),
+    ).toEqual([
+      {
+        scheme: 'digest',
+        params: {
+          realm: 'BaikalDAV',
+          qop: 'auth',
+          nonce: '6abef27466f7d',
+          opaque: 'd66d5f0524036afcb61420e358f990ce',
+        },
+      },
+    ]);
+  });
+
+  it('splits several challenges and unescapes quoted strings', () => {
+    expect(
+      parseAuthenticateHeader(
+        'Basic realm="a \\"b\\"", Digest realm="r", qop="auth,auth-int", algorithm=SHA-256, nonce="n"',
+      ),
+    ).toEqual([
+      { scheme: 'basic', params: { realm: 'a "b"' } },
+      {
+        scheme: 'digest',
+        params: { realm: 'r', qop: 'auth,auth-int', algorithm: 'SHA-256', nonce: 'n' },
+      },
+    ]);
+  });
+});
+
+describe('selectDigestChallenge', () => {
+  it('defaults to MD5 and prefers SHA-256 when both are offered', () => {
+    expect(selectDigestChallenge('Digest realm="r", nonce="n"')?.algorithm).toBe('MD5');
+    expect(
+      selectDigestChallenge(
+        'Digest realm="r", nonce="n", algorithm=MD5, Digest realm="r", nonce="n", algorithm=SHA-256',
+      )?.algorithm,
+    ).toBe('SHA-256');
+  });
+
+  it('ignores challenges it cannot answer', () => {
+    expect(selectDigestChallenge('Digest realm="r", nonce="n", qop="auth-int"')).toBeUndefined();
+    expect(
+      selectDigestChallenge('Digest realm="r", nonce="n", algorithm=SHA-512-256'),
+    ).toBeUndefined();
+    expect(selectDigestChallenge('Basic realm="r"')).toBeUndefined();
+    expect(selectDigestChallenge(null)).toBeUndefined();
+  });
+
+  it('defers to Basic when asked to and the server accepts Basic', () => {
+    const header = 'Basic realm="r", Digest realm="r", nonce="n"';
+    expect(selectDigestChallenge(header, { unlessBasic: true })).toBeUndefined();
+    expect(selectDigestChallenge(header)?.nonce).toBe('n');
+  });
+
+  it('reads the stale flag', () => {
+    expect(selectDigestChallenge('Digest realm="r", nonce="n", stale=TRUE')?.stale).toBe(true);
+  });
+});
+
+describe('buildDigestAuthorization', () => {
+  // RFC 7616 §3.9.1
+  const rfcExample = {
+    username: 'Mufasa',
+    password: 'Circle of Life',
+    method: 'GET',
+    uri: '/dir/index.html',
+    nc: 1,
+    cnonce: 'f2/wE4q74E6zIJEtWaHKaf5wv/H5QzzpXusqGemxURZJ',
+  };
+  const rfcChallenge = (algorithm: string) =>
+    selectDigestChallenge(
+      `Digest realm="http-auth@example.org", qop="auth, auth-int", algorithm=${algorithm}, nonce="7ypf/xlj9XXwfDPEoM4URrv/xwf94BcCAzFZH4GiTo0v", opaque="FQhe/qaU925kfnzjCev0ciny7QMkPqMAFRtzCUYo5tdS"`,
+    );
+
+  it('produces the RFC 7616 MD5 response', async () => {
+    const challenge = rfcChallenge('MD5');
+    if (!challenge) throw new Error('challenge not parsed');
+    const header = await buildDigestAuthorization({ ...rfcExample, challenge });
+    expect(parseDigestParams(header)).toEqual({
+      username: 'Mufasa',
+      realm: 'http-auth@example.org',
+      uri: '/dir/index.html',
+      algorithm: 'MD5',
+      nonce: '7ypf/xlj9XXwfDPEoM4URrv/xwf94BcCAzFZH4GiTo0v',
+      nc: '00000001',
+      cnonce: 'f2/wE4q74E6zIJEtWaHKaf5wv/H5QzzpXusqGemxURZJ',
+      qop: 'auth',
+      response: '8ca523f5e9506fed4657c9700eebdbec',
+      opaque: 'FQhe/qaU925kfnzjCev0ciny7QMkPqMAFRtzCUYo5tdS',
+    });
+  });
+
+  it('produces the RFC 7616 SHA-256 response', async () => {
+    const challenge = rfcChallenge('SHA-256');
+    if (!challenge) throw new Error('challenge not parsed');
+    const header = await buildDigestAuthorization({ ...rfcExample, challenge });
+    expect(parseDigestParams(header).response).toBe(
+      '753927fa0e85d155564e2e272a28d1802ca10daf4496794697cf8db5856cb6c1',
+    );
+    expect(parseDigestParams(header).algorithm).toBe('SHA-256');
+  });
+
+  it('uses the RFC 2069 form when the challenge has no qop', async () => {
+    const challenge = selectDigestChallenge('Digest realm="r", nonce="n"');
+    if (!challenge) throw new Error('challenge not parsed');
+    const header = await buildDigestAuthorization({ ...rfcExample, challenge });
+    const params = parseDigestParams(header);
+    expect(params.qop).toBeUndefined();
+    expect(params.nc).toBeUndefined();
+    expect(params.response).toBe(
+      md5(`${md5('Mufasa:r:Circle of Life')}:n:${md5('GET:/dir/index.html')}`),
+    );
+  });
+
+  it('derives the session key for MD5-sess', async () => {
+    const challenge = selectDigestChallenge(
+      'Digest realm="r", nonce="n", qop=auth, algorithm=MD5-sess',
+    );
+    if (!challenge) throw new Error('challenge not parsed');
+    const header = await buildDigestAuthorization({ ...rfcExample, challenge });
+    const ha1 = md5(`${md5('Mufasa:r:Circle of Life')}:n:${rfcExample.cnonce}`);
+    expect(parseDigestParams(header)).toMatchObject({
+      algorithm: 'MD5-sess',
+      response: md5(`${ha1}:n:00000001:${rfcExample.cnonce}:auth:${md5('GET:/dir/index.html')}`),
+    });
+  });
+});
+
+describe('createDigestFetch', () => {
+  const url = 'http://dav.test/dav.php/calendars/digestuser/';
+
+  it('answers a challenge with one retry', async () => {
+    const server = createDigestServer({ ...credentials, handle: multistatus });
+    const response = await createDigestFetch({ credentials, fetch: server.fetch })(url, {
+      method: 'PROPFIND',
+    });
+
+    expect(response.status).toBe(207);
+    expect(server.fetch).toHaveBeenCalledTimes(2);
+    expect(server.authorizationOf(0)).toBeNull();
+    expect(parseDigestParams(server.authorizationOf(1) ?? '')).toMatchObject({
+      username: 'digestuser',
+      uri: '/dav.php/calendars/digestuser/',
+      nc: '00000001',
+      qop: 'auth',
+      opaque: 'opaque-1',
+    });
+  });
+
+  it('authorizes later requests up front with an incrementing nonce count', async () => {
+    const server = createDigestServer({ ...credentials, handle: multistatus });
+    const digestFetch = createDigestFetch({ credentials, fetch: server.fetch });
+    await digestFetch(url, { method: 'PROPFIND' });
+    const response = await digestFetch(`${url}event.ics?export`, { method: 'GET' });
+
+    expect(response.status).toBe(207);
+    expect(server.fetch).toHaveBeenCalledTimes(3);
+    const params = parseDigestParams(server.authorizationOf(2) ?? '');
+    expect(params).toMatchObject({
+      nc: '00000002',
+      uri: '/dav.php/calendars/digestuser/event.ics?export',
+    });
+    expect(params.cnonce).not.toBe(parseDigestParams(server.authorizationOf(1) ?? '').cnonce);
+  });
+
+  it('retries once with the new nonce when the old one is stale', async () => {
+    const server = createDigestServer({ ...credentials, handle: multistatus });
+    const digestFetch = createDigestFetch({ credentials, fetch: server.fetch });
+    await digestFetch(url, { method: 'PROPFIND' });
+    server.rotateNonce();
+    const response = await digestFetch(url, { method: 'PROPFIND' });
+
+    expect(response.status).toBe(207);
+    expect(server.fetch).toHaveBeenCalledTimes(4);
+    expect(parseDigestParams(server.authorizationOf(3) ?? '')).toMatchObject({
+      nonce: 'nonce-2',
+      nc: '00000001',
+    });
+  });
+
+  it('returns the 401 after a single retry when the password is wrong', async () => {
+    const server = createDigestServer({ ...credentials, handle: multistatus });
+    const response = await createDigestFetch({
+      credentials: { ...credentials, password: 'wrong' },
+      fetch: server.fetch,
+    })(url, { method: 'PROPFIND' });
+
+    expect(response.status).toBe(401);
+    expect(server.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('resends the request body on retry', async () => {
+    const server = createDigestServer({
+      ...credentials,
+      handle: () => new Response(null, { status: 201 }),
+    });
+    const body = 'BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n';
+    const response = await createDigestFetch({ credentials, fetch: server.fetch })(
+      `${url}new.ics`,
+      { method: 'PUT', body, headers: { 'Content-Type': 'text/calendar' } },
+    );
+
+    expect(response.status).toBe(201);
+    expect(server.fetch.mock.calls.map(([, init]) => init?.body)).toEqual([body, body]);
+    expect(new Headers(server.fetch.mock.calls[1][1]?.headers).get('content-type')).toBe(
+      'text/calendar',
+    );
+  });
+
+  it('does not retry a stream body, which can only be sent once', async () => {
+    const server = createDigestServer({ ...credentials, handle: multistatus });
+    const response = await createDigestFetch({ credentials, fetch: server.fetch })(url, {
+      method: 'PUT',
+      body: new ReadableStream(),
+    });
+
+    expect(response.status).toBe(401);
+    expect(server.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('never falls back to Basic once Digest is in use', async () => {
+    const basicOnly = vi.fn(
+      async () =>
+        new Response('', { status: 401, headers: { 'www-authenticate': 'Basic realm="r"' } }),
+    );
+    const response = await createDigestFetch({ credentials, fetch: basicOnly })(url);
+
+    expect(response.status).toBe(401);
+    expect(basicOnly).toHaveBeenCalledTimes(1);
+  });
+
+  describe('starting from Basic auth', () => {
+    const basicInit = () => ({ method: 'PROPFIND', headers: { authorization: 'Basic abc' } });
+
+    it('switches to Digest when the server only offers Digest', async () => {
+      const server = createDigestServer({ ...credentials, handle: multistatus });
+      const state = createDigestAuthState(false);
+      const digestFetch = createDigestFetch({ credentials, fetch: server.fetch, state });
+      const response = await digestFetch(url, basicInit());
+      await digestFetch(url, basicInit());
+
+      expect(response.status).toBe(207);
+      expect(state.active).toBe(true);
+      expect(server.fetch).toHaveBeenCalledTimes(3);
+      expect(server.authorizationOf(0)).toBe('Basic abc');
+      expect(server.authorizationOf(1)).toMatch(/^Digest .*nc=00000001/);
+      expect(server.authorizationOf(2)).toMatch(/^Digest .*nc=00000002/);
+    });
+
+    it('stays on Basic when the server also offers Basic', async () => {
+      const server = createDigestServer({ ...credentials, offerBasic: true, handle: multistatus });
+      const state = createDigestAuthState(false);
+      const response = await createDigestFetch({ credentials, fetch: server.fetch, state })(
+        url,
+        basicInit(),
+      );
+
+      expect(response.status).toBe(401);
+      expect(state.active).toBe(false);
+      expect(server.fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('passes requests through untouched when Basic succeeds', async () => {
+      const basicServer = vi.fn(async () => multistatus());
+      const init = basicInit();
+      const response = await createDigestFetch({
+        credentials,
+        fetch: basicServer,
+        state: createDigestAuthState(false),
+      })(url, init);
+
+      expect(response.status).toBe(207);
+      expect(basicServer).toHaveBeenCalledTimes(1);
+      expect(basicServer).toHaveBeenCalledWith(url, init);
+    });
+  });
+});

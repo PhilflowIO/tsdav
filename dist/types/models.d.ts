@@ -52,6 +52,11 @@ export type DAVCredentials = {
     accessToken?: string;
     refreshToken?: string;
     expiration?: number;
+    /**
+     * @deprecated Use `username` and `password` with `authMethod: 'Digest'`;
+     * tsdav now answers the server's Digest challenge per request. Only used
+     * when no `password` is set.
+     */
     digestString?: string;
     customData?: Record<string, unknown>;
 };

@@ -126,21 +126,33 @@ const fn2 = defaultParam(fn1, { b: 10 });
 
 ### digest auth and custom auth
 
-for digest auth, you need to handle the auth process yourself, pass the final digest string like
+for digest auth (RFC 7616), pass `username` and `password` with `authMethod: 'Digest'`.
+tsdav answers the server's `WWW-Authenticate` challenge itself and computes a fresh
+`Authorization` header for every request (MD5, MD5-sess, SHA-256 and SHA-256-sess with
+`qop=auth`, or the RFC 2069 form when the server sends no `qop`).
 
-```
-username="Mufasa",
-realm="testrealm@host.com",
-nonce="dcd98b7102dd2f0e8b11d0f600bfb0c093",
-uri="/dir/index.html",
-qop=auth,
-nc=00000001,
-cnonce="0a4f113b",
-response="6629fae49393a05397450978507c4ef1",
-opaque="5ccc069c403ebaf9f0171e9517f40e41
+```ts
+const client = await createDAVClient({
+  serverUrl: 'https://baikal.example.com/dav.php',
+  credentials: { username: 'user', password: 'password' },
+  authMethod: 'Digest',
+  defaultAccountType: 'caldav',
+});
 ```
 
-as `digestString` param in DAVCredentials
+when calling the request functions directly, wrap `fetch` once and pass it to every call so
+the challenge is reused:
+
+```ts
+const digestFetch = createDigestFetch({ credentials: { username: 'user', password: 'password' } });
+const account = await createAccount({
+  account: { serverUrl: 'https://baikal.example.com/dav.php', accountType: 'caldav' },
+  fetch: digestFetch,
+});
+```
+
+the `digestString` credential (a precomputed header value) is deprecated. It is still sent
+as-is when no `password` is given.
 
 for custom auth, you can pass additional data via `customData` prop to DAVCredentials,
 you can pass in your custom auth function as `authFunction` param and will have DAVCredentials available to it.

@@ -92,6 +92,7 @@ export {
   fetchOauthTokens,
   refreshAccessToken,
 } from './util/authHelpers';
+export { createDigestFetch } from './util/digestAuth';
 export {
   urlContains,
   urlEquals,
