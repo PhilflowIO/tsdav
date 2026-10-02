@@ -2218,6 +2218,7 @@ const getCrypto = () => {
 };
 const hash = async (algorithm, data) => algorithm.startsWith("MD5") ? md5(data) : toHex(new Uint8Array(await getCrypto().subtle.digest("SHA-256", new TextEncoder().encode(data))));
 const quote = (value) => `"${value.replace(/["\\]/g, "\\$&")}"`;
+const usernameField = (username) => /^[\x20-\x7e]*$/.test(username) ? `username=${quote(username)}` : `username*=UTF-8''${encodeURIComponent(username).replace(/['()*]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`)}`;
 /**
 * Compute the `Authorization` header value for one request (RFC 7616 §3.4;
 * RFC 2069 form when the challenge carries no qop).
@@ -2231,7 +2232,7 @@ const buildDigestAuthorization = async (params) => {
 	const ha2 = await hash(algorithm, `${method}:${uri}`);
 	const response = await hash(algorithm, qop ? `${ha1}:${nonce}:${nc}:${cnonce}:${qop}:${ha2}` : `${ha1}:${nonce}:${ha2}`);
 	return `Digest ${[
-		`username=${quote(challenge.userhash ? await hash(algorithm, `${username}:${realm}`) : username)}`,
+		challenge.userhash ? `username=${quote(await hash(algorithm, `${username}:${realm}`))}` : usernameField(username),
 		`realm=${quote(realm)}`,
 		`uri=${quote(uri)}`,
 		`algorithm=${algorithm.replace("-SESS", "-sess")}`,

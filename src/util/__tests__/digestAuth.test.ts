@@ -149,6 +149,33 @@ describe('buildDigestAuthorization', () => {
       response: md5(`${ha1}:n:00000001:${rfcExample.cnonce}:auth:${md5('GET:/dir/index.html')}`),
     });
   });
+
+  it('sends a non-ASCII username as an RFC 5987 username*', async () => {
+    const challenge = selectDigestChallenge('Digest realm="r", nonce="n", qop=auth');
+    if (!challenge) throw new Error('challenge not parsed');
+    const header = await buildDigestAuthorization({
+      ...rfcExample,
+      username: "jürgen o'neil",
+      challenge,
+    });
+    const ha1 = md5("jürgen o'neil:r:Circle of Life");
+    expect(header).toContain("username*=UTF-8''j%C3%BCrgen%20o%27neil,");
+    expect(header).not.toContain('username=');
+    expect(parseDigestParams(header).response).toBe(
+      md5(`${ha1}:n:00000001:${rfcExample.cnonce}:auth:${md5('GET:/dir/index.html')}`),
+    );
+  });
+
+  it('escapes quotes and backslashes in a quoted username', async () => {
+    const challenge = selectDigestChallenge('Digest realm="r", nonce="n", qop=auth');
+    if (!challenge) throw new Error('challenge not parsed');
+    const header = await buildDigestAuthorization({
+      ...rfcExample,
+      username: 'a"b\\c',
+      challenge,
+    });
+    expect(header).toContain('username="a\\"b\\\\c",');
+  });
 });
 
 describe('createDigestFetch', () => {

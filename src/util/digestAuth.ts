@@ -161,6 +161,16 @@ const hash = async (algorithm: DigestAlgorithm, data: string): Promise<string> =
 
 const quote = (value: string): string => `"${value.replace(/["\\]/g, '\\$&')}"`;
 
+// RFC 7616 §3.4.4: a username that is not printable ASCII is sent as an
+// RFC 5987 extended value, which percent-encodes everything but attr-char.
+const usernameField = (username: string): string =>
+  /^[\x20-\x7e]*$/.test(username)
+    ? `username=${quote(username)}`
+    : `username*=UTF-8''${encodeURIComponent(username).replace(
+        /['()*]/g,
+        (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
+      )}`;
+
 /**
  * Compute the `Authorization` header value for one request (RFC 7616 §3.4;
  * RFC 2069 form when the challenge carries no qop).
@@ -189,7 +199,9 @@ export const buildDigestAuthorization = async (params: {
   );
 
   const fields = [
-    `username=${quote(challenge.userhash ? await hash(algorithm, `${username}:${realm}`) : username)}`,
+    challenge.userhash
+      ? `username=${quote(await hash(algorithm, `${username}:${realm}`))}`
+      : usernameField(username),
     `realm=${quote(realm)}`,
     `uri=${quote(uri)}`,
     `algorithm=${algorithm.replace('-SESS', '-sess')}`,
