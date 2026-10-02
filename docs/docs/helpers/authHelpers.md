@@ -130,6 +130,8 @@ for digest auth (RFC 7616), pass `username` and `password` with `authMethod: 'Di
 tsdav answers the server's `WWW-Authenticate` challenge itself and computes a fresh
 `Authorization` header for every request (MD5, MD5-sess, SHA-256 and SHA-256-sess with
 `qop=auth`, or the RFC 2069 form when the server sends no `qop`).
+Digest needs the WebCrypto API (`globalThis.crypto`): Node.js >= 19, browsers, Bun or Deno.
+On Node.js 18 a Digest request fails with an error that says so.
 
 ```ts
 const client = await createDAVClient({

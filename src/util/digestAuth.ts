@@ -343,6 +343,8 @@ export const createDigestFetch = (params: {
     if (!challenge) {
       return response;
     }
+    // Fail on a missing WebCrypto before the client is switched to Digest.
+    getCrypto();
     if (!state.active) {
       debug('Server only offers Digest authentication, switching from Basic');
       state.active = true;

@@ -4774,6 +4774,7 @@ const createDigestFetch = (params) => {
 		if (response.status !== 401 || !isReplayable(init.body)) return response;
 		const challenge = selectDigestChallenge(response.headers.get("www-authenticate"), { unlessBasic: !state.active });
 		if (!challenge) return response;
+		getCrypto();
 		if (!state.active) {
 			debug("Server only offers Digest authentication, switching from Basic");
 			state.active = true;

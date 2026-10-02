@@ -395,6 +395,28 @@ describe('createDigestFetch', () => {
     expect(server.fetch).toHaveBeenCalledTimes(2);
   });
 
+  it('fails clearly without WebCrypto and keeps a Basic client on Basic', async () => {
+    vi.stubGlobal('crypto', undefined);
+    try {
+      const responses = [
+        new Response('', {
+          status: 401,
+          headers: { 'www-authenticate': 'Digest realm="r", nonce="n", qop="auth"' },
+        }),
+        multistatus(),
+      ];
+      const server = vi.fn(async () => responses.shift() as Response);
+      const state = createDigestAuthState(false);
+      const digestFetch = createDigestFetch({ credentials, fetch: server, state });
+
+      await expect(digestFetch(url)).rejects.toThrow('requires the WebCrypto API');
+      expect(state.active).toBe(false);
+      expect((await digestFetch(url)).status).toBe(207);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   describe('starting from Basic auth', () => {
     const basicInit = () => ({ method: 'PROPFIND', headers: { authorization: 'Basic abc' } });
 
