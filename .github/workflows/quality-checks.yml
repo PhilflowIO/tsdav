@@ -106,6 +106,21 @@ jobs:
 
           echo "✅ dist matches a fresh build from src"
 
+      # Consumers (dav-mcp) install this fork as an npm git dependency, a path
+      # pnpm-based CI never exercises: npm installs devDependencies to run
+      # `prepare`, and a peer conflict there crashed the install outright.
+      - name: Install as npm git dependency
+        run: |
+          CONSUMER=$(mktemp -d)
+          npm init -y --prefix "$CONSUMER" > /dev/null
+          npm install --prefix "$CONSUMER" --no-audit --no-fund \
+            "git+file://$GITHUB_WORKSPACE#$(git rev-parse HEAD)"
+          node --input-type=module -e "
+            import('$CONSUMER/node_modules/tsdav/dist/tsdav.esm.js').then((m) => {
+              if (typeof m.createDAVClient !== 'function' || typeof m.fetchTodos !== 'function') process.exit(1);
+              console.log('✅ git dependency installs and imports');
+            });"
+
       - name: Summary
         if: success()
         run: |
