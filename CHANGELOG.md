@@ -1,4 +1,12 @@
-## v2.3.5+philflow.3 (PhilflowIO fork)
+## v2.3.5+philflow.4 (PhilflowIO fork)
+
+**Installing this fork.** The fork is not on npm. Each fork tag has a GitHub Release with the packed tarball attached; depend on that URL:
+
+```json
+"tsdav": "https://github.com/PhilflowIO/tsdav/releases/download/v2.3.5%2Bphilflow.4/tsdav-2.3.5-philflow.4.tgz"
+```
+
+Installing by git URL (`github:PhilflowIO/tsdav#<tag>`) is unsupported on npm < 10.9, which includes the npm shipped with Node 18 and 20.
 
 Upstream v2.3.5 merged into the fork. Fork-only additions on top of upstream:
 
@@ -13,8 +21,10 @@ Upstream v2.3.5 merged into the fork. Fork-only additions on top of upstream:
 
 ##### build
 - the version is `2.3.5+philflow.N` (build metadata) rather than a `-philflow.N` prerelease, which sorts before 2.3.5 and fails peer ranges such as `tsdav@^2.0.0`
-- `dist/` stays committed; CI rebuilds it on every push and fails on any difference, and installs the commit as an npm git dependency
-- `prepare` only installs git hooks; consumers no longer build on install
+- consumed as a release tarball: pushing a fork tag builds, packs and attaches `tsdav-2.3.5-philflow.N.tgz` to a GitHub Release, then installs that URL on Node 18, 20 and 22. The fork is never published to npm
+- git-URL installs are unsupported on npm < 10.9: npm installs a git dependency's devDependencies to run `prepare`, and npm 10.8.2 crashes there
+- `dist/` stays committed; CI rebuilds it on every push and fails on any difference, and installs the packed tarball
+- `prepare` only installs git hooks and does not run for tarball installs; consumers never build on install
 
 ##### behaviour changes for fork users (from upstream v2.3.5)
 - `validateISO8601TimeRange` is gone; use `validateTimeRange`
