@@ -238,11 +238,12 @@ const isReplayable = (body: RequestInit['body']): boolean =>
 // Same limit as fetch itself (WHATWG Fetch, "HTTP-redirect fetch").
 const MAX_REDIRECTS = 20;
 const REDIRECT_STATUSES = [301, 302, 303, 307, 308];
+const BODY_HEADERS = ['content-encoding', 'content-language', 'content-location', 'content-type'];
 
 /**
  * The request fetch makes for the next hop of a redirect: a 303 (and a 301 or
- * 302 after POST) turns into a GET without body, every other redirect keeps
- * method and body.
+ * 302 after POST) turns into a GET without body and body headers, every other
+ * redirect keeps method and body.
  */
 const redirectInit = (status: number, init: RequestInit): RequestInit => {
   const method = (init.method ?? 'GET').toUpperCase();
@@ -251,7 +252,7 @@ const redirectInit = (status: number, init: RequestInit): RequestInit => {
     ((status === 301 || status === 302) && method === 'POST')
   ) {
     const headers = new Headers(init.headers);
-    headers.delete('content-type');
+    for (const name of BODY_HEADERS) headers.delete(name);
     return { ...init, method: 'GET', body: undefined, headers };
   }
   return init;

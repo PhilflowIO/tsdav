@@ -344,14 +344,24 @@ describe('createDigestFetch', () => {
     });
     const response = await createDigestFetch({ credentials, fetch: server.fetch })(
       'http://dav.test/upload',
-      { method: 'PUT', body: 'data', headers: { 'Content-Type': 'text/plain' } },
+      {
+        method: 'PUT',
+        body: 'data',
+        headers: {
+          'Content-Type': 'text/plain',
+          'Content-Encoding': 'gzip',
+          'Content-Language': 'de',
+          'Content-Location': '/upload',
+          Depth: '0',
+        },
+      },
     );
 
     expect(response.status).toBe(200);
     const [input, init] = server.fetch.mock.calls[2];
     expect(String(input)).toBe('http://dav.test/done');
     expect(init).toMatchObject({ method: 'GET', body: undefined });
-    expect(new Headers(init?.headers).has('content-type')).toBe(false);
+    expect([...new Headers(init?.headers).keys()].sort()).toEqual(['authorization', 'depth']);
     expect(parseDigestParams(server.authorizationOf(2) ?? '').uri).toBe('/done');
   });
 

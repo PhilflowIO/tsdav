@@ -4692,16 +4692,22 @@ const REDIRECT_STATUSES = [
 	307,
 	308
 ];
+const BODY_HEADERS = [
+	"content-encoding",
+	"content-language",
+	"content-location",
+	"content-type"
+];
 /**
 * The request fetch makes for the next hop of a redirect: a 303 (and a 301 or
-* 302 after POST) turns into a GET without body, every other redirect keeps
-* method and body.
+* 302 after POST) turns into a GET without body and body headers, every other
+* redirect keeps method and body.
 */
 const redirectInit = (status, init) => {
 	const method = (init.method ?? "GET").toUpperCase();
 	if (status === 303 && method !== "GET" && method !== "HEAD" || (status === 301 || status === 302) && method === "POST") {
 		const headers = new Headers(init.headers);
-		headers.delete("content-type");
+		for (const name of BODY_HEADERS) headers.delete(name);
 		return {
 			...init,
 			method: "GET",
