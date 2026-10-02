@@ -1,9 +1,9 @@
-## v2.3.5+philflow.4 (PhilflowIO fork)
+## v2.3.5+philflow.5 (PhilflowIO fork)
 
 **Installing this fork.** The fork is not on npm. Each fork tag has a GitHub Release with the packed tarball attached; depend on that URL:
 
 ```json
-"tsdav": "https://github.com/PhilflowIO/tsdav/releases/download/v2.3.5%2Bphilflow.4/tsdav-2.3.5-philflow.4.tgz"
+"tsdav": "https://github.com/PhilflowIO/tsdav/releases/download/v2.3.5%2Bphilflow.5/tsdav-2.3.5-philflow.5.tgz"
 ```
 
 Installing by git URL (`github:PhilflowIO/tsdav#<tag>`) is unsupported on npm < 10.9, which includes the npm shipped with Node 18 and 20.
@@ -16,6 +16,7 @@ Upstream v2.3.5 merged into the fork. Fork-only additions on top of upstream:
 - HTTP Digest authentication (RFC 7616): `authMethod: 'Digest'` takes username and password and answers the server's challenge per request; a `'Basic'` client switches to Digest when the server only offers Digest. Needs WebCrypto (Node.js >= 19)
 
 ##### bug fixes
+- Digest on a runtime without WebCrypto (Node 18) fails login with `DigestUnsupportedError` ("Digest authentication requires the WebCrypto API") instead of `cannot find principalUrl`; account discovery no longer swallows it
 - honour the `fetch` override in `makeAddressBook` and in the todo API
 - caller-supplied `headers` no longer replace the client's auth headers (fixed upstream in v2.3.5, regression test added in the fork)
 
