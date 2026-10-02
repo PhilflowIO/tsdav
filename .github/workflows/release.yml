@@ -8,6 +8,16 @@ name: fork-release
 # with a `prepare` script npm clones the repo and runs a nested install of the
 # devDependencies, and npm 10.8.2 (shipped with Node 18 and 20) crashes in that
 # nested install. A tarball is unpacked as-is; no scripts, no devDependencies.
+#
+# Order: build -> verify -> publish. The tarball travels between the jobs as a
+# workflow artifact, so the release only becomes public after the exact file
+# installed on every supported Node version. A draft release was the
+# alternative; it would need `contents: write` in the verify jobs (a draft and
+# its assets are invisible to a read-only token) and could still not be
+# installed the way a consumer installs, by plain URL.
+#
+# Actions are pinned to commit SHAs: a tag can be moved, and the publish job
+# holds a token that can write to this repository.
 on:
   push:
     tags:
@@ -16,26 +26,33 @@ on:
 permissions:
   contents: read
 
+# One run per tag at a time; a second push or a re-run waits instead of racing
+# the first one to `gh release create`.
+concurrency:
+  group: fork-release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  release:
-    name: Build, pack and release
+  build:
+    name: Build and pack
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     outputs:
-      asset_url: ${{ steps.publish.outputs.asset_url }}
       version: ${{ steps.version.outputs.version }}
+      asset: ${{ steps.pack.outputs.asset }}
+      sha256: ${{ steps.pack.outputs.sha256 }}
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       # pnpm version comes from package.json `packageManager`.
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: '.nvmrc'
           cache: 'pnpm'
@@ -94,28 +111,16 @@ jobs:
           # --ignore-scripts: `prepare` is the git-hook installer, not a build.
           npm pack --ignore-scripts
           ASSET="tsdav-$(echo "$VERSION" | tr '+' '-').tgz"
-          mv "tsdav-$VERSION.tgz" "$ASSET"
-          tar -tzf "$ASSET"
+          mkdir -p "$RUNNER_TEMP/release"
+          mv "tsdav-$VERSION.tgz" "$RUNNER_TEMP/release/$ASSET"
+          tar -tzf "$RUNNER_TEMP/release/$ASSET"
+          SHA256=$(sha256sum "$RUNNER_TEMP/release/$ASSET" | cut -d' ' -f1)
           echo "asset=$ASSET" >> "$GITHUB_OUTPUT"
+          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
+          echo "📦 $ASSET sha256 $SHA256"
 
-      # Cheap gate before anything becomes public: the packed file installs
-      # and imports on the build runner.
-      - name: Install the tarball locally
-        env:
-          ASSET: ${{ steps.pack.outputs.asset }}
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          CONSUMER=$(mktemp -d)
-          npm init -y --prefix "$CONSUMER" > /dev/null
-          npm install --prefix "$CONSUMER" --no-audit --no-fund "$GITHUB_WORKSPACE/$ASSET"
-          cd "$CONSUMER"
-          node -e "
-            const v = require('tsdav/package.json').version;
-            if (v !== process.env.VERSION) { console.error('wrong version', v); process.exit(1); }
-            const m = require('tsdav');
-            if (typeof m.createDAVClient !== 'function' || typeof m.fetchTodos !== 'function') process.exit(1);
-            console.log('✅ tarball installs and imports, version', v);"
-
+      # Fails here, before any install job starts, when the CHANGELOG has no
+      # section for this version.
       - name: Release notes from the CHANGELOG fork section
         env:
           VERSION: ${{ steps.version.outputs.version }}
@@ -124,49 +129,29 @@ jobs:
             $0 == heading { found = 1; next }
             found && /^## / { exit }
             found { print }
-          ' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
-          if [ ! -s "$RUNNER_TEMP/notes.md" ]; then
+          ' CHANGELOG.md > "$RUNNER_TEMP/release/notes.md"
+          if [ ! -s "$RUNNER_TEMP/release/notes.md" ]; then
             echo "❌ ERROR: CHANGELOG.md has no section '## v$VERSION (PhilflowIO fork)'"
             exit 1
           fi
 
-      - name: Create GitHub Release
-        id: publish
-        env:
-          GH_TOKEN: ${{ github.token }}
-          ASSET: ${{ steps.pack.outputs.asset }}
-        run: |
-          gh release create "$GITHUB_REF_NAME" "$ASSET" \
-            --verify-tag \
-            --title "$GITHUB_REF_NAME" \
-            --notes-file "$RUNNER_TEMP/notes.md"
+      # The one file every later job uses: verify installs it, publish
+      # attaches it. Nothing is rebuilt or repacked after this point.
+      - name: Hand the tarball to the next jobs
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release
+          path: ${{ runner.temp }}/release/
+          if-no-files-found: error
+          retention-days: 7
 
-          # Ask GitHub for the URL instead of composing it: the tag has a `+`
-          # in it and this is the exact string consumers pin.
-          ASSET_URL=$(gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[0].url')
-          if [ -z "$ASSET_URL" ]; then
-            echo "❌ ERROR: release has no asset"
-            exit 1
-          fi
-          echo "asset_url=$ASSET_URL" >> "$GITHUB_OUTPUT"
-          echo "📦 Asset download URL: $ASSET_URL"
-          {
-            echo "### $GITHUB_REF_NAME"
-            echo ""
-            echo "Pin this in the consumer's package.json:"
-            echo ""
-            echo '```json'
-            echo "\"tsdav\": \"$ASSET_URL\""
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-
-  # Installs what consumers install, from where they install it, on the Node
-  # versions they run. Runs after the release exists because the URL only
-  # exists then; a failure here means the release just published is broken.
+  # Installs the file consumers will install, on the Node versions they run,
+  # before it is public. A failure here leaves no release behind.
   verify:
-    name: Install released tarball (Node ${{ matrix.node-version }})
-    needs: release
+    name: Install packed tarball (Node ${{ matrix.node-version }})
+    needs: build
     runs-on: ubuntu-latest
+    permissions: {}
 
     strategy:
       fail-fast: false
@@ -174,20 +159,28 @@ jobs:
         node-version: [18, 20, 22]
 
     steps:
-      # No checkout: a consumer has nothing but the URL.
+      # No checkout: a consumer has nothing but the tarball.
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: ${{ matrix.node-version }}
 
-      - name: Install from the release URL
+      - name: Fetch the tarball
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release
+          path: release
+
+      - name: Install the tarball
         env:
-          ASSET_URL: ${{ needs.release.outputs.asset_url }}
+          ASSET: ${{ needs.build.outputs.asset }}
+          SHA256: ${{ needs.build.outputs.sha256 }}
         run: |
           node --version && npm --version
+          echo "$SHA256  release/$ASSET" | sha256sum --check
           mkdir consumer && cd consumer
           npm init -y > /dev/null
-          npm install --no-audit --no-fund "$ASSET_URL"
+          npm install --no-audit --no-fund "../release/$ASSET"
           # the lockfile path, which is what consumer CI runs
           rm -rf node_modules
           npm ci --no-audit --no-fund
@@ -195,7 +188,7 @@ jobs:
       - name: Import (ESM and CJS)
         working-directory: consumer
         env:
-          VERSION: ${{ needs.release.outputs.version }}
+          VERSION: ${{ needs.build.outputs.version }}
         run: |
           node --input-type=module -e "
             const m = await import('tsdav');
@@ -207,3 +200,100 @@ jobs:
             const m = require('tsdav');
             if (typeof m.createDAVClient !== 'function' || typeof m.fetchTodos !== 'function') process.exit(1);
             console.log('✅ CJS require, version', v);"
+
+  # The only job with a token that can write. It runs no code from the
+  # repository and installs no dependencies: it attaches the verified file.
+  publish:
+    name: Publish GitHub Release
+    needs: [build, verify]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    env:
+      GH_TOKEN: ${{ github.token }}
+      # No checkout in this job, so gh has to be told which repository.
+      GH_REPO: ${{ github.repository }}
+      ASSET: ${{ needs.build.outputs.asset }}
+      SHA256: ${{ needs.build.outputs.sha256 }}
+
+    steps:
+      - name: Fetch the tarball
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release
+          path: release
+
+      - name: Check the tarball is the one that was verified
+        run: echo "$SHA256  release/$ASSET" | sha256sum --check
+
+      # Safe to run again for a tag that is already released. An existing
+      # asset is never replaced: consumers' lockfiles carry its hash, so
+      # swapping the bytes under the same URL would break their `npm ci`.
+      # Same bytes -> nothing to do; different bytes -> fail and ask for a
+      # new version.
+      - name: Create or complete the GitHub Release
+        run: |
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            echo "ℹ️  Release $GITHUB_REF_NAME already exists"
+            HAS_ASSET=$(gh release view "$GITHUB_REF_NAME" --json assets \
+              --jq "[.assets[] | select(.name == \"$ASSET\")] | length")
+            if [ "$HAS_ASSET" = "0" ]; then
+              gh release upload "$GITHUB_REF_NAME" "release/$ASSET"
+              echo "✅ Attached the missing asset $ASSET"
+            else
+              mkdir -p "$RUNNER_TEMP/existing"
+              gh release download "$GITHUB_REF_NAME" --pattern "$ASSET" --dir "$RUNNER_TEMP/existing"
+              EXISTING=$(sha256sum "$RUNNER_TEMP/existing/$ASSET" | cut -d' ' -f1)
+              if [ "$EXISTING" != "$SHA256" ]; then
+                echo "❌ ERROR: $ASSET is already released with different content"
+                echo "   released: $EXISTING"
+                echo "   this run: $SHA256"
+                echo "   A released tarball is not replaced. Bump the version and tag again."
+                exit 1
+              fi
+              echo "✅ $ASSET is already attached and identical"
+            fi
+            # Covers a release someone left as a draft, and refreshes the notes.
+            gh release edit "$GITHUB_REF_NAME" \
+              --draft=false \
+              --title "$GITHUB_REF_NAME" \
+              --notes-file release/notes.md
+          else
+            gh release create "$GITHUB_REF_NAME" "release/$ASSET" \
+              --verify-tag \
+              --title "$GITHUB_REF_NAME" \
+              --notes-file release/notes.md
+          fi
+
+      # Ask GitHub for the URL instead of composing it: the tag has a `+` in
+      # it and this is the exact string consumers pin. Then fetch that URL
+      # without a token, as a consumer does, and compare it with the file the
+      # install jobs tested.
+      - name: Check the public download
+        run: |
+          ASSET_URL=$(gh release view "$GITHUB_REF_NAME" --json assets \
+            --jq ".assets[] | select(.name == \"$ASSET\") | .url")
+          if [ -z "$ASSET_URL" ]; then
+            echo "❌ ERROR: release has no asset $ASSET"
+            exit 1
+          fi
+          curl --fail --silent --show-error --location --retry 5 --retry-all-errors \
+            --output "$RUNNER_TEMP/published.tgz" "$ASSET_URL"
+          PUBLISHED=$(sha256sum "$RUNNER_TEMP/published.tgz" | cut -d' ' -f1)
+          if [ "$PUBLISHED" != "$SHA256" ]; then
+            echo "❌ ERROR: $ASSET_URL does not serve the verified tarball"
+            echo "   served:   $PUBLISHED"
+            echo "   verified: $SHA256"
+            exit 1
+          fi
+          echo "📦 Asset download URL: $ASSET_URL"
+          {
+            echo "### $GITHUB_REF_NAME"
+            echo ""
+            echo "Pin this in the consumer's package.json:"
+            echo ""
+            echo '```json'
+            echo "\"tsdav\": \"$ASSET_URL\""
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
