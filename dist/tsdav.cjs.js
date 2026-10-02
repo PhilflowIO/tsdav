@@ -2282,6 +2282,41 @@ const toURL = (input) => {
 	}
 };
 const isReplayable = (body) => body == null || typeof body !== "object" || !(typeof body.getReader === "function" || Symbol.asyncIterator in body);
+const MAX_REDIRECTS = 20;
+const REDIRECT_STATUSES = [
+	301,
+	302,
+	303,
+	307,
+	308
+];
+/**
+* The request fetch makes for the next hop of a redirect: a 303 (and a 301 or
+* 302 after POST) turns into a GET without body, every other redirect keeps
+* method and body.
+*/
+const redirectInit = (status, init) => {
+	const method = (init.method ?? "GET").toUpperCase();
+	if (status === 303 && method !== "GET" && method !== "HEAD" || (status === 301 || status === 302) && method === "POST") {
+		const headers = new Headers(init.headers);
+		headers.delete("content-type");
+		return {
+			...init,
+			method: "GET",
+			body: void 0,
+			headers
+		};
+	}
+	return init;
+};
+const withoutAuthorization = (init) => {
+	const headers = new Headers(init.headers);
+	headers.delete("authorization");
+	return {
+		...init,
+		headers
+	};
+};
 const createDigestAuthState = (active) => ({
 	active,
 	challenges: /* @__PURE__ */ new Map()
@@ -2297,6 +2332,10 @@ const createDigestAuthState = (active) => ({
 * - With an inactive `state` (Basic auth), the wrapper only switches to
 *   Digest when a 401 offers Digest and no Basic. It never falls back from
 *   Digest to Basic.
+* - Redirects are followed by the wrapper, because the `Authorization` header
+*   is bound to the request URI. Credentials are only sent to the origin of
+*   the original request. A caller's `redirect: 'manual'` or `'error'` is
+*   passed through to `fetch` unchanged.
 */
 const createDigestFetch = (params) => {
 	const { credentials, fetch: fetchOverride } = params;
@@ -2322,9 +2361,7 @@ const createDigestFetch = (params) => {
 			headers
 		};
 	};
-	return async (input, init = {}) => {
-		const url = toURL(input);
-		if (!url) return requestFetch(input, init);
+	const request = async (input, init, url) => {
 		const method = (init.method ?? "GET").toUpperCase();
 		const uri = `${url.pathname}${url.search}`;
 		const response = await requestFetch(input, state.active ? await authorize(init, url.origin, method, uri) : init);
@@ -2342,6 +2379,29 @@ const createDigestFetch = (params) => {
 		});
 		await response.body?.cancel().catch(() => void 0);
 		return requestFetch(input, await authorize(init, url.origin, method, uri));
+	};
+	return async (input, init = {}) => {
+		const url = toURL(input);
+		if (!url) return requestFetch(input, init);
+		if ((init.redirect ?? "follow") !== "follow" || !isReplayable(init.body)) return request(input, init, url);
+		let target = input;
+		let targetUrl = url;
+		let targetInit = {
+			...init,
+			redirect: "manual"
+		};
+		for (let redirects = 0;; redirects += 1) {
+			const response = targetUrl.origin === url.origin ? await request(target, targetInit, targetUrl) : await requestFetch(target, targetInit);
+			if (response.type === "opaqueredirect") return request(input, init, url);
+			const location = response.headers.get("location");
+			if (!REDIRECT_STATUSES.includes(response.status) || !location) return response;
+			if (redirects === MAX_REDIRECTS) throw new TypeError("tsdav: too many redirects");
+			await response.body?.cancel().catch(() => void 0);
+			targetUrl = new URL(location, targetUrl);
+			target = targetUrl.href;
+			targetInit = redirectInit(response.status, targetInit);
+			if (targetUrl.origin !== url.origin) targetInit = withoutAuthorization(targetInit);
+		}
 	};
 };
 //#endregion

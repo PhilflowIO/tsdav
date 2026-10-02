@@ -254,6 +254,100 @@ describe('createDigestFetch', () => {
     expect(basicOnly).toHaveBeenCalledTimes(1);
   });
 
+  it('follows redirects with an Authorization header for each hop', async () => {
+    const server = createDigestServer({
+      ...credentials,
+      handle: (_, path) => {
+        if (path === '/old') {
+          return new Response(null, { status: 301, headers: { location: '/sub%20dir' } });
+        }
+        if (path === '/sub%20dir') {
+          return new Response(null, { status: 307, headers: { location: '/sub%20dir/' } });
+        }
+        return multistatus();
+      },
+    });
+    const response = await createDigestFetch({ credentials, fetch: server.fetch })(
+      'http://dav.test/old',
+      { method: 'PROPFIND', body: '<d:propfind xmlns:d="DAV:"/>' },
+    );
+
+    expect(response.status).toBe(207);
+    const hops = server.fetch.mock.calls.slice(1).map(([input, init], call) => ({
+      url: String(input),
+      method: init?.method,
+      body: init?.body,
+      uri: parseDigestParams(server.authorizationOf(call + 1) ?? '').uri,
+    }));
+    const body = '<d:propfind xmlns:d="DAV:"/>';
+    expect(hops).toEqual([
+      { url: 'http://dav.test/old', method: 'PROPFIND', body, uri: '/old' },
+      { url: 'http://dav.test/sub%20dir', method: 'PROPFIND', body, uri: '/sub%20dir' },
+      { url: 'http://dav.test/sub%20dir/', method: 'PROPFIND', body, uri: '/sub%20dir/' },
+    ]);
+  });
+
+  it('turns a 303 into a GET without body', async () => {
+    const server = createDigestServer({
+      ...credentials,
+      handle: (method) =>
+        method === 'PUT'
+          ? new Response(null, { status: 303, headers: { location: '/done' } })
+          : new Response('ok'),
+    });
+    const response = await createDigestFetch({ credentials, fetch: server.fetch })(
+      'http://dav.test/upload',
+      { method: 'PUT', body: 'data', headers: { 'Content-Type': 'text/plain' } },
+    );
+
+    expect(response.status).toBe(200);
+    const [input, init] = server.fetch.mock.calls[2];
+    expect(String(input)).toBe('http://dav.test/done');
+    expect(init).toMatchObject({ method: 'GET', body: undefined });
+    expect(new Headers(init?.headers).has('content-type')).toBe(false);
+    expect(parseDigestParams(server.authorizationOf(2) ?? '').uri).toBe('/done');
+  });
+
+  it('sends no credentials to another origin after a redirect', async () => {
+    const server = createDigestServer({
+      ...credentials,
+      handle: () =>
+        new Response(null, { status: 302, headers: { location: 'http://other.test/x' } }),
+    });
+    const other = vi.fn(
+      async () =>
+        new Response('', {
+          status: 401,
+          headers: { 'www-authenticate': 'Digest realm="other", nonce="n", qop="auth"' },
+        }),
+    );
+    const routed = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) =>
+      new URL(String(input)).origin === 'http://other.test'
+        ? other(input, init)
+        : server.fetch(input, init),
+    );
+    const response = await createDigestFetch({ credentials, fetch: routed })(url, {
+      headers: { authorization: 'Basic abc' },
+    });
+
+    expect(response.status).toBe(401);
+    expect(other).toHaveBeenCalledTimes(1);
+    expect(new Headers(other.mock.calls[0][1]?.headers).has('authorization')).toBe(false);
+  });
+
+  it("leaves redirects to the caller with redirect: 'manual'", async () => {
+    const server = createDigestServer({
+      ...credentials,
+      handle: () => new Response(null, { status: 301, headers: { location: '/elsewhere' } }),
+    });
+    const response = await createDigestFetch({ credentials, fetch: server.fetch })(url, {
+      redirect: 'manual',
+    });
+
+    expect(response.status).toBe(301);
+    expect(server.fetch).toHaveBeenCalledTimes(2);
+  });
+
   describe('starting from Basic auth', () => {
     const basicInit = () => ({ method: 'PROPFIND', headers: { authorization: 'Basic abc' } });
 
@@ -296,7 +390,7 @@ describe('createDigestFetch', () => {
 
       expect(response.status).toBe(207);
       expect(basicServer).toHaveBeenCalledTimes(1);
-      expect(basicServer).toHaveBeenCalledWith(url, init);
+      expect(basicServer).toHaveBeenCalledWith(url, { ...init, redirect: 'manual' });
     });
   });
 });

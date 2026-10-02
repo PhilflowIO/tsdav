@@ -73,6 +73,10 @@ export declare const createDigestAuthState: (active: boolean) => DigestAuthState
  * - With an inactive `state` (Basic auth), the wrapper only switches to
  *   Digest when a 401 offers Digest and no Basic. It never falls back from
  *   Digest to Basic.
+ * - Redirects are followed by the wrapper, because the `Authorization` header
+ *   is bound to the request URI. Credentials are only sent to the origin of
+ *   the original request. A caller's `redirect: 'manual'` or `'error'` is
+ *   passed through to `fetch` unchanged.
  */
 export declare const createDigestFetch: (params: {
     credentials: Pick<DAVCredentials, 'username' | 'password'>;

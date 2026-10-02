@@ -223,6 +223,34 @@ const isReplayable = (body: RequestInit['body']): boolean =>
     Symbol.asyncIterator in (body as object)
   );
 
+// Same limit as fetch itself (WHATWG Fetch, "HTTP-redirect fetch").
+const MAX_REDIRECTS = 20;
+const REDIRECT_STATUSES = [301, 302, 303, 307, 308];
+
+/**
+ * The request fetch makes for the next hop of a redirect: a 303 (and a 301 or
+ * 302 after POST) turns into a GET without body, every other redirect keeps
+ * method and body.
+ */
+const redirectInit = (status: number, init: RequestInit): RequestInit => {
+  const method = (init.method ?? 'GET').toUpperCase();
+  if (
+    (status === 303 && method !== 'GET' && method !== 'HEAD') ||
+    ((status === 301 || status === 302) && method === 'POST')
+  ) {
+    const headers = new Headers(init.headers);
+    headers.delete('content-type');
+    return { ...init, method: 'GET', body: undefined, headers };
+  }
+  return init;
+};
+
+const withoutAuthorization = (init: RequestInit): RequestInit => {
+  const headers = new Headers(init.headers);
+  headers.delete('authorization');
+  return { ...init, headers };
+};
+
 export const createDigestAuthState = (active: boolean): DigestAuthState => ({
   active,
   challenges: new Map(),
@@ -239,6 +267,10 @@ export const createDigestAuthState = (active: boolean): DigestAuthState => ({
  * - With an inactive `state` (Basic auth), the wrapper only switches to
  *   Digest when a 401 offers Digest and no Basic. It never falls back from
  *   Digest to Basic.
+ * - Redirects are followed by the wrapper, because the `Authorization` header
+ *   is bound to the request URI. Credentials are only sent to the origin of
+ *   the original request. A caller's `redirect: 'manual'` or `'error'` is
+ *   passed through to `fetch` unchanged.
  */
 export const createDigestFetch = (params: {
   credentials: Pick<DAVCredentials, 'username' | 'password'>;
@@ -272,9 +304,12 @@ export const createDigestFetch = (params: {
     return { ...init, headers };
   };
 
-  return async (input, init = {}) => {
-    const url = toURL(input);
-    if (!url) return requestFetch(input, init);
+  // One request to `url`, plus the retry that answers a Digest challenge.
+  const request = async (
+    input: RequestInfo | URL,
+    init: RequestInit,
+    url: URL,
+  ): Promise<Response> => {
     const method = (init.method ?? 'GET').toUpperCase();
     const uri = `${url.pathname}${url.search}`;
 
@@ -299,5 +334,42 @@ export const createDigestFetch = (params: {
     state.challenges.set(url.origin, { challenge, nc: 0 });
     await response.body?.cancel().catch(() => undefined);
     return requestFetch(input, await authorize(init, url.origin, method, uri));
+  };
+
+  return async (input, init = {}) => {
+    const url = toURL(input);
+    if (!url) return requestFetch(input, init);
+    if ((init.redirect ?? 'follow') !== 'follow' || !isReplayable(init.body)) {
+      return request(input, init, url);
+    }
+
+    let target: RequestInfo | URL = input;
+    let targetUrl = url;
+    let targetInit: RequestInit = { ...init, redirect: 'manual' };
+    for (let redirects = 0; ; redirects += 1) {
+      const response =
+        targetUrl.origin === url.origin
+          ? await request(target, targetInit, targetUrl)
+          : await requestFetch(target, targetInit);
+      if (response.type === 'opaqueredirect') {
+        // Browsers hide the redirect target from 'manual'; let fetch follow it.
+        return request(input, init, url);
+      }
+      const location = response.headers.get('location');
+      if (!REDIRECT_STATUSES.includes(response.status) || !location) {
+        return response;
+      }
+      if (redirects === MAX_REDIRECTS) {
+        throw new TypeError('tsdav: too many redirects');
+      }
+      await response.body?.cancel().catch(() => undefined);
+      targetUrl = new URL(location, targetUrl);
+      target = targetUrl.href;
+      targetInit = redirectInit(response.status, targetInit);
+      if (targetUrl.origin !== url.origin) {
+        // Like fetch, never send the Authorization header to another origin.
+        targetInit = withoutAuthorization(targetInit);
+      }
+    }
   };
 };
