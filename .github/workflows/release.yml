@@ -1,75 +1,209 @@
-name: auto-release
+name: fork-release
 
+# This fork is never published to npm: the registry name `tsdav` belongs to
+# upstream (natelindev/tsdav). A fork release is a GitHub Release carrying the
+# packed tarball, and consumers depend on that tarball's URL.
+#
+# Why a tarball and not `github:PhilflowIO/tsdav#<tag>`: for a git dependency
+# with a `prepare` script npm clones the repo and runs a nested install of the
+# devDependencies, and npm 10.8.2 (shipped with Node 18 and 20) crashes in that
+# nested install. A tarball is unpacked as-is; no scripts, no devDependencies.
 on:
-  release:
-    types: [published]
+  push:
+    tags:
+      - 'v*philflow*'
 
 permissions:
-  id-token: write
   contents: read
 
 jobs:
   release:
+    name: Build, pack and release
     runs-on: ubuntu-latest
-
-    strategy:
-      matrix:
-        node-version: ['24']
-
-    environment:
-      name: Production
+    permissions:
+      contents: write
+    outputs:
+      asset_url: ${{ steps.publish.outputs.asset_url }}
+      version: ${{ steps.version.outputs.version }}
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
+      # pnpm version comes from package.json `packageManager`.
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
 
-      - name: use node.js ${{ matrix.node-version }}
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm i --frozen-lockfile
+
+      # The tag is the only thing a consumer pins, so it has to name the
+      # version that is inside the tarball.
+      - name: Check tag matches package.json version
+        id: version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if [ "$GITHUB_REF_NAME" != "v$VERSION" ]; then
+            echo "❌ ERROR: tag $GITHUB_REF_NAME does not match package.json version $VERSION (expected v$VERSION)"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "✅ Tag $GITHUB_REF_NAME matches version $VERSION"
+
+      - name: Check types
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      # Unit tests only: the integration suites need provider credentials.
+      - name: Unit tests
+        run: pnpm test:unit
+
+      - name: Build
+        run: pnpm build
+
+      # The tarball is packed from the working tree; it must be the dist that
+      # is committed under the tag, not something only this run produced.
+      - name: Verify dist is up-to-date
+        run: |
+          DRIFT=$(git status --porcelain -- dist/)
+          if [ -n "$DRIFT" ]; then
+            echo "❌ ERROR: dist does not match a fresh build from src!"
+            echo "$DRIFT"
+            exit 1
+          fi
+          echo "✅ dist matches a fresh build from src"
+
+      # npm names the file tsdav-<version>.tgz, and the version carries a `+`
+      # (build metadata). GitHub rewrites characters it does not accept in
+      # asset names, so the `+` is replaced here, where it is visible, instead
+      # of by the upload. Only the file name changes; the version inside the
+      # tarball stays 2.3.5+philflow.N.
+      - name: Pack
+        id: pack
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          # --ignore-scripts: `prepare` is the git-hook installer, not a build.
+          npm pack --ignore-scripts
+          ASSET="tsdav-$(echo "$VERSION" | tr '+' '-').tgz"
+          mv "tsdav-$VERSION.tgz" "$ASSET"
+          tar -tzf "$ASSET"
+          echo "asset=$ASSET" >> "$GITHUB_OUTPUT"
+
+      # Cheap gate before anything becomes public: the packed file installs
+      # and imports on the build runner.
+      - name: Install the tarball locally
+        env:
+          ASSET: ${{ steps.pack.outputs.asset }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          CONSUMER=$(mktemp -d)
+          npm init -y --prefix "$CONSUMER" > /dev/null
+          npm install --prefix "$CONSUMER" --no-audit --no-fund "$GITHUB_WORKSPACE/$ASSET"
+          cd "$CONSUMER"
+          node -e "
+            const v = require('tsdav/package.json').version;
+            if (v !== process.env.VERSION) { console.error('wrong version', v); process.exit(1); }
+            const m = require('tsdav');
+            if (typeof m.createDAVClient !== 'function' || typeof m.fetchTodos !== 'function') process.exit(1);
+            console.log('✅ tarball installs and imports, version', v);"
+
+      - name: Release notes from the CHANGELOG fork section
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          awk -v heading="## v$VERSION (PhilflowIO fork)" '
+            $0 == heading { found = 1; next }
+            found && /^## / { exit }
+            found { print }
+          ' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+          if [ ! -s "$RUNNER_TEMP/notes.md" ]; then
+            echo "❌ ERROR: CHANGELOG.md has no section '## v$VERSION (PhilflowIO fork)'"
+            exit 1
+          fi
+
+      - name: Create GitHub Release
+        id: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ASSET: ${{ steps.pack.outputs.asset }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "$ASSET" \
+            --verify-tag \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file "$RUNNER_TEMP/notes.md"
+
+          # Ask GitHub for the URL instead of composing it: the tag has a `+`
+          # in it and this is the exact string consumers pin.
+          ASSET_URL=$(gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[0].url')
+          if [ -z "$ASSET_URL" ]; then
+            echo "❌ ERROR: release has no asset"
+            exit 1
+          fi
+          echo "asset_url=$ASSET_URL" >> "$GITHUB_OUTPUT"
+          echo "📦 Asset download URL: $ASSET_URL"
+          {
+            echo "### $GITHUB_REF_NAME"
+            echo ""
+            echo "Pin this in the consumer's package.json:"
+            echo ""
+            echo '```json'
+            echo "\"tsdav\": \"$ASSET_URL\""
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Installs what consumers install, from where they install it, on the Node
+  # versions they run. Runs after the release exists because the URL only
+  # exists then; a failure here means the release just published is broken.
+  verify:
+    name: Install released tarball (Node ${{ matrix.node-version }})
+    needs: release
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [18, 20, 22]
+
+    steps:
+      # No checkout: a consumer has nothing but the URL.
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
-          registry-url: 'https://registry.npmjs.org'
 
-      - name: install dependencies
-        run: pnpm i --frozen-lockfile
-
-      - name: check types
-        run: pnpm typecheck
-
-      - name: lint
-        run: pnpm lint
-
-      - name: build package for verification
-        run: pnpm build
-
-      - name: test
-        run: pnpm test
+      - name: Install from the release URL
         env:
-          RECORD_NETWORK_REQUESTS: 'false'
-          MOCK_FETCH: 'true'
-          CREDENTIAL_ICLOUD_USERNAME: ${{secrets.CREDENTIAL_ICLOUD_USERNAME}}
-          CREDENTIAL_ICLOUD_APP_SPECIFIC_PASSWORD: ${{secrets.CREDENTIAL_ICLOUD_APP_SPECIFIC_PASSWORD}}
-          CREDENTIAL_GOOGLE_USERNAME: ${{secrets.CREDENTIAL_GOOGLE_USERNAME}}
-          CREDENTIAL_GOOGLE_REFRESH_TOKEN: ${{secrets.CREDENTIAL_GOOGLE_REFRESH_TOKEN}}
-          CREDENTIAL_GOOGLE_CLIENT_ID: ${{secrets.CREDENTIAL_GOOGLE_CLIENT_ID}}
-          CREDENTIAL_GOOGLE_CLIENT_SECRET: ${{secrets.CREDENTIAL_GOOGLE_CLIENT_SECRET}}
-          CREDENTIAL_FASTMAIL_USERNAME: ${{secrets.CREDENTIAL_FASTMAIL_USERNAME}}
-          CREDENTIAL_FASTMAIL_APP_PASSWORD: ${{secrets.CREDENTIAL_FASTMAIL_APP_PASSWORD}}
-          CREDENTIAL_NEXTCLOUD_USERNAME: ${{secrets.CREDENTIAL_NEXTCLOUD_USERNAME}}
-          CREDENTIAL_NEXTCLOUD_PASSWORD: ${{secrets.CREDENTIAL_NEXTCLOUD_PASSWORD}}
-          CREDENTIAL_NEXTCLOUD_SERVER_URL: ${{secrets.CREDENTIAL_NEXTCLOUD_SERVER_URL}}
-
-      - name: check public consumers and examples
+          ASSET_URL: ${{ needs.release.outputs.asset_url }}
         run: |
-          pnpm test:consumer
-          pnpm test:examples
-          pnpm exec knip --dependencies --workspace .
+          node --version && npm --version
+          mkdir consumer && cd consumer
+          npm init -y > /dev/null
+          npm install --no-audit --no-fund "$ASSET_URL"
+          # the lockfile path, which is what consumer CI runs
+          rm -rf node_modules
+          npm ci --no-audit --no-fund
 
-      # Publish to npm with provenance statements
-      # Requires NPM_TOKEN secret to be configured in repository secrets
-      # or in the Production environment secrets
-      - name: publish package
-        run: npm publish --provenance
+      - name: Import (ESM and CJS)
+        working-directory: consumer
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          node --input-type=module -e "
+            const m = await import('tsdav');
+            if (typeof m.createDAVClient !== 'function' || typeof m.fetchTodos !== 'function') process.exit(1);
+            console.log('✅ ESM import');"
+          node -e "
+            const v = require('tsdav/package.json').version;
+            if (v !== process.env.VERSION) { console.error('wrong version', v); process.exit(1); }
+            const m = require('tsdav');
+            if (typeof m.createDAVClient !== 'function' || typeof m.fetchTodos !== 'function') process.exit(1);
+            console.log('✅ CJS require, version', v);"
