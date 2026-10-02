@@ -1850,7 +1850,7 @@ const fetchTodos = async (params) => {
 	const { filters, timeRange, calendar } = params;
 	if (timeRange) validateTimeRange(timeRange);
 	debug$3(`Fetching todo objects from ${calendar?.url}`);
-	if (!calendar) throw new Error("cannot fetchTodos for undefined calendar");
+	if (!calendar?.url) throw new Error("cannot fetchTodos for a calendar without url");
 	return fetchCalendarObjects({
 		...params,
 		filters: filters ?? buildTodoFilter(timeRange)

@@ -135,8 +135,8 @@ export const fetchTodos = async (params: {
     validateTimeRange(timeRange);
   }
   debug(`Fetching todo objects from ${calendar?.url}`);
-  if (!calendar) {
-    throw new Error('cannot fetchTodos for undefined calendar');
+  if (!calendar?.url) {
+    throw new Error('cannot fetchTodos for a calendar without url');
   }
   return fetchCalendarObjects({
     ...params,
