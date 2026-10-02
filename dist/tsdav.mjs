@@ -1517,526 +1517,6 @@ const freeBusyQuery = async (params) => {
 	return response;
 };
 //#endregion
-//#region src/account.ts
-var account_exports = /* @__PURE__ */ __exportAll({
-	createAccount: () => createAccount,
-	fetchHomeUrl: () => fetchHomeUrl,
-	fetchPrincipalUrl: () => fetchPrincipalUrl,
-	serviceDiscovery: () => serviceDiscovery
-});
-const debug$3 = getLogger("tsdav:account");
-const getCandidateRootUrls = (serverUrl, discoveredRootUrl) => {
-	const candidates = [
-		discoveredRootUrl,
-		serverUrl,
-		new URL("/", serverUrl).href
-	];
-	return candidates.filter((url, index) => candidates.indexOf(url) === index);
-};
-const serviceDiscovery = async (params) => {
-	debug$3("Service discovery...");
-	const { account, headers, headersToExclude, fetchOptions = {}, fetch: fetchOverride } = params;
-	const requestFetch = fetchOverride ?? fetch;
-	const endpoint = new URL(account.serverUrl);
-	const { headers: fetchHeaders, ...fetchOptionsWithoutHeaders } = fetchOptions;
-	const uri = new URL(`/.well-known/${account.accountType}`, endpoint);
-	uri.protocol = endpoint.protocol ?? "http";
-	const extractRedirect = (response) => {
-		if (response.status >= 300 && response.status < 400) {
-			const location = response.headers.get("Location");
-			if (typeof location === "string" && location.length) {
-				debug$3(`Service discovery redirected to ${location}`);
-				return new URL(location, uri).href;
-			}
-		}
-	};
-	try {
-		const redirectUrl = extractRedirect(await requestFetch(uri.href, {
-			...fetchOptionsWithoutHeaders,
-			method: "PROPFIND",
-			headers: excludeHeaders(mergeHeaders({ "Content-Type": "text/xml;charset=UTF-8" }, headers, fetchHeaders), headersToExclude),
-			body: `<?xml version="1.0" encoding="utf-8" ?>
-<d:propfind xmlns:d="DAV:">
-  <d:prop>
-    <d:resourcetype/>
-  </d:prop>
-</d:propfind>`,
-			redirect: "manual"
-		}));
-		if (redirectUrl) return redirectUrl;
-	} catch (err) {
-		debug$3(`Service discovery PROPFIND failed: ${err.stack}`);
-	}
-	try {
-		const redirectUrl = extractRedirect(await requestFetch(uri.href, {
-			...fetchOptionsWithoutHeaders,
-			method: "GET",
-			body: void 0,
-			headers: excludeHeaders(mergeHeaders(headers, fetchHeaders), headersToExclude),
-			redirect: "manual"
-		}));
-		if (redirectUrl) return redirectUrl;
-	} catch (err) {
-		debug$3(`Service discovery GET failed: ${err.stack}`);
-	}
-	return endpoint.href;
-};
-const extractHref = (raw) => {
-	if (typeof raw === "string" && raw.trim().length > 0) return raw.trim();
-	if (Array.isArray(raw)) {
-		for (const item of raw) {
-			const found = extractHref(item);
-			if (found) return found;
-		}
-		return;
-	}
-	if (raw && typeof raw === "object") {
-		if ("_cdata" in raw && typeof raw._cdata === "string") {
-			const cdata = raw._cdata.trim();
-			if (cdata.length > 0) return cdata;
-		}
-		if ("_text" in raw && typeof raw._text === "string") {
-			const text = raw._text.trim();
-			if (text.length > 0) return text;
-		}
-	}
-};
-const fetchPrincipalUrl = async (params) => {
-	const { account, headers, headersToExclude, fetchOptions = {}, fetch: fetchOverride } = params;
-	const requiredFields = ["rootUrl"];
-	if (!hasFields(account, requiredFields)) throw new Error(`account must have ${findMissingFieldNames(account, requiredFields)} before fetchPrincipalUrl`);
-	debug$3(`Fetching principal url from path ${account.rootUrl}`);
-	const [response] = await propfind({
-		url: account.rootUrl,
-		props: { [`d:current-user-principal`]: {} },
-		depth: "0",
-		headers: excludeHeaders(headers, headersToExclude),
-		headersToExclude,
-		fetchOptions,
-		fetch: fetchOverride
-	});
-	if (!response?.ok) {
-		debug$3(`Fetch principal url failed: ${response?.statusText ?? "empty response"}`);
-		if (response?.status === 401) throw new Error(`Invalid credentials: PROPFIND ${account.rootUrl} returned 401 Unauthorized`);
-		throw new Error("cannot find principalUrl");
-	}
-	const principalHref = extractHref(response.props?.currentUserPrincipal?.href);
-	if (!principalHref) {
-		debug$3("Fetch principal url failed: missing current-user-principal href");
-		throw new Error("cannot find principalUrl");
-	}
-	debug$3(`Fetched principal url ${principalHref}`);
-	return new URL(principalHref, ensureTrailingSlash(account.rootUrl)).href;
-};
-const fetchHomeUrl = async (params) => {
-	const { account, headers, headersToExclude, fetchOptions = {}, fetch: fetchOverride } = params;
-	const requiredFields = ["principalUrl", "rootUrl"];
-	if (!hasFields(account, requiredFields)) throw new Error(`account must have ${findMissingFieldNames(account, requiredFields)} before fetchHomeUrl`);
-	debug$3(`Fetch home url from ${account.principalUrl}`);
-	const responses = await propfind({
-		url: account.principalUrl,
-		props: account.accountType === "caldav" ? { [`c:calendar-home-set`]: {} } : { [`card:addressbook-home-set`]: {} },
-		depth: "0",
-		headers: excludeHeaders(headers, headersToExclude),
-		headersToExclude,
-		fetchOptions,
-		fetch: fetchOverride
-	});
-	const matched = responses.find((r) => urlMatches(account.principalUrl, r.href, account.rootUrl));
-	if (!matched || !matched.ok) {
-		debug$3(`Fetch home url failed with status ${matched?.statusText} and error ${JSON.stringify(responses.map((r) => r.error))}`);
-		throw new Error("cannot find homeUrl");
-	}
-	const homeHref = extractHref(account.accountType === "caldav" ? matched.props?.calendarHomeSet?.href : matched.props?.addressbookHomeSet?.href);
-	if (!homeHref) {
-		debug$3(`Fetch home url failed: server did not return a ${account.accountType === "caldav" ? "calendar-home-set" : "addressbook-home-set"} href`);
-		throw new Error("cannot find homeUrl");
-	}
-	const result = new URL(homeHref, ensureTrailingSlash(account.rootUrl)).href;
-	debug$3(`Fetched home url ${result}`);
-	return result;
-};
-const createAccount = async (params) => {
-	const { account, headers, loadCollections = false, loadObjects = false, headersToExclude, fetchOptions = {}, fetch: fetchOverride } = params;
-	const newAccount = { ...account };
-	const discoveredRootUrl = account.rootUrl ?? await serviceDiscovery({
-		account,
-		headers: excludeHeaders(headers, headersToExclude),
-		headersToExclude,
-		fetchOptions,
-		fetch: fetchOverride
-	});
-	if (account.rootUrl) newAccount.rootUrl = account.rootUrl;
-	else if (account.principalUrl) newAccount.rootUrl = discoveredRootUrl;
-	else {
-		const findPrincipalUrl = async (rootUrls, index = 0, lastPrincipalError) => {
-			const rootUrl = rootUrls[index];
-			if (!rootUrl) throw lastPrincipalError ?? /* @__PURE__ */ new Error("cannot find principalUrl");
-			try {
-				return {
-					rootUrl,
-					principalUrl: await fetchPrincipalUrl({
-						account: {
-							...newAccount,
-							rootUrl
-						},
-						headers: excludeHeaders(headers, headersToExclude),
-						headersToExclude,
-						fetchOptions,
-						fetch: fetchOverride
-					})
-				};
-			} catch (err) {
-				const isCredentialsError = lastPrincipalError?.message.startsWith("Invalid credentials");
-				return findPrincipalUrl(rootUrls, index + 1, isCredentialsError ? lastPrincipalError : err);
-			}
-		};
-		const { rootUrl, principalUrl } = await findPrincipalUrl(getCandidateRootUrls(account.serverUrl, discoveredRootUrl));
-		newAccount.rootUrl = rootUrl;
-		newAccount.principalUrl = principalUrl;
-	}
-	newAccount.principalUrl = account.principalUrl ?? newAccount.principalUrl ?? await fetchPrincipalUrl({
-		account: newAccount,
-		headers: excludeHeaders(headers, headersToExclude),
-		headersToExclude,
-		fetchOptions,
-		fetch: fetchOverride
-	});
-	newAccount.homeUrl = account.homeUrl ?? await fetchHomeUrl({
-		account: newAccount,
-		headers: excludeHeaders(headers, headersToExclude),
-		headersToExclude,
-		fetchOptions,
-		fetch: fetchOverride
-	});
-	if (loadCollections || loadObjects) {
-		if (account.accountType === "caldav") newAccount.calendars = await fetchCalendars({
-			headers: excludeHeaders(headers, headersToExclude),
-			headersToExclude,
-			account: newAccount,
-			fetchOptions,
-			fetch: fetchOverride
-		});
-		else if (account.accountType === "carddav") newAccount.addressBooks = await fetchAddressBooks({
-			headers: excludeHeaders(headers, headersToExclude),
-			headersToExclude,
-			account: newAccount,
-			fetchOptions,
-			fetch: fetchOverride
-		});
-	}
-	if (loadObjects) {
-		if (account.accountType === "caldav" && newAccount.calendars) newAccount.calendars = await Promise.all(newAccount.calendars.map(async (cal) => ({
-			...cal,
-			objects: await fetchCalendarObjects({
-				calendar: cal,
-				filters: { "comp-filter": { _attributes: { name: "VCALENDAR" } } },
-				urlFilter: (url) => !urlEquals(url, cal.url),
-				headers: excludeHeaders(headers, headersToExclude),
-				headersToExclude,
-				fetchOptions,
-				fetch: fetchOverride
-			})
-		})));
-		else if (account.accountType === "carddav" && newAccount.addressBooks) newAccount.addressBooks = await Promise.all(newAccount.addressBooks.map(async (addr) => ({
-			...addr,
-			objects: await fetchVCards({
-				addressBook: addr,
-				headers: excludeHeaders(headers, headersToExclude),
-				headersToExclude,
-				fetchOptions,
-				fetch: fetchOverride
-			})
-		})));
-	}
-	return newAccount;
-};
-//#endregion
-//#region src/todo.ts
-var todo_exports = /* @__PURE__ */ __exportAll({
-	createTodo: () => createTodo,
-	deleteTodo: () => deleteTodo,
-	fetchTodos: () => fetchTodos,
-	todoMultiGet: () => todoMultiGet,
-	todoQuery: () => todoQuery,
-	updateTodo: () => updateTodo
-});
-const debug$2 = getLogger("tsdav:todo");
-const toCalDAVDateTime = (value) => `${new Date(value).toISOString().slice(0, 19).replace(/[-:.]/g, "")}Z`;
-const buildTodoFilter = (timeRange) => [{ "comp-filter": {
-	_attributes: { name: "VCALENDAR" },
-	"comp-filter": {
-		_attributes: { name: "VTODO" },
-		...timeRange ? { "time-range": { _attributes: {
-			start: toCalDAVDateTime(timeRange.start),
-			end: toCalDAVDateTime(timeRange.end)
-		} } } : {}
-	}
-} }];
-/**
-* Query todos using CalDAV REPORT calendar-query
-*
-* @param params.url - Calendar URL to query
-* @param params.props - Properties to request
-* @param params.filters - Optional CalDAV filters
-* @param params.timezone - Optional timezone
-* @param params.depth - Depth header value
-* @param params.headers - Request headers
-* @param params.headersToExclude - Headers to exclude
-* @param params.fetchOptions - Fetch options
-* @param params.fetch - Optional fetch implementation to use instead of the default
-* @returns Array of DAV responses
-*/
-const todoQuery = async (params) => calendarQuery(params);
-/**
-* Fetch multiple todos by URL using CalDAV calendar-multiget
-*
-* @param params.url - Calendar URL
-* @param params.props - Properties to request
-* @param params.objectUrls - Array of todo object URLs to fetch
-* @param params.timezone - Optional timezone
-* @param params.depth - Depth header value
-* @param params.filters - Optional CalDAV filters
-* @param params.headers - Request headers
-* @param params.headersToExclude - Headers to exclude
-* @param params.fetchOptions - Fetch options
-* @param params.fetch - Optional fetch implementation to use instead of the default
-* @returns Array of DAV responses
-*/
-const todoMultiGet = async (params) => calendarMultiGet(params);
-/**
-* Fetch VTODO objects from a CalDAV calendar with optional filtering
-*
-* @param params.calendar - Calendar to fetch todos from
-* @param params.objectUrls - Optional array of specific todo URLs to fetch
-* @param params.filters - Optional custom CalDAV filters (replaces the default VTODO filter)
-* @param params.timeRange - Optional time range filter in ISO8601 format
-* @param params.expand - Whether to expand recurring todos (requires timeRange)
-* @param params.urlFilter - Custom filter function for todo object URLs
-* @param params.headers - Request headers
-* @param params.headersToExclude - Headers to exclude
-* @param params.useMultiGet - Whether to use multiget (default: true)
-* @param params.fetchOptions - Fetch options
-* @param params.fetch - Optional fetch implementation to use instead of the default
-* @returns Array of todo objects with url, etag, and iCalendar data
-* @throws Error if calendar URL is missing or timeRange is invalid
-*/
-const fetchTodos = async (params) => {
-	const { filters, timeRange, calendar } = params;
-	if (timeRange) validateTimeRange(timeRange);
-	debug$2(`Fetching todo objects from ${calendar?.url}`);
-	if (!calendar?.url) throw new Error("cannot fetchTodos for a calendar without url");
-	return fetchCalendarObjects({
-		...params,
-		filters: filters ?? buildTodoFilter(timeRange)
-	});
-};
-/**
-* Create a new VTODO object in a CalDAV calendar
-*
-* @param params.calendar - Calendar to create the todo in
-* @param params.iCalString - iCalendar data string (must contain UID)
-* @param params.filename - Filename for the todo object
-* @param params.headers - Request headers
-* @param params.headersToExclude - Headers to exclude
-* @param params.fetchOptions - Fetch options
-* @param params.fetch - Optional fetch implementation to use instead of the default
-* @returns Response from the server
-* @throws Error if iCalString does not contain a UID
-*/
-const createTodo = async (params) => {
-	if (!params.iCalString.includes("UID:")) throw new Error("iCalString must contain a UID");
-	return createCalendarObject(params);
-};
-/**
-* Update an existing VTODO object in a CalDAV calendar
-*
-* @param params.calendarObject - Todo object to update (must have etag)
-* @param params.headers - Request headers
-* @param params.headersToExclude - Headers to exclude
-* @param params.fetchOptions - Fetch options
-* @param params.fetch - Optional fetch implementation to use instead of the default
-* @returns Response from the server
-* @throws Error if calendarObject does not have an etag
-*/
-const updateTodo = async (params) => {
-	if (!params.calendarObject.etag) throw new Error("calendarObject must have etag for update - fetch todo first");
-	return updateCalendarObject(params);
-};
-/**
-* Delete a VTODO object from a CalDAV calendar
-*
-* @param params.calendarObject - Todo object to delete
-* @param params.headers - Request headers
-* @param params.headersToExclude - Headers to exclude
-* @param params.fetchOptions - Fetch options
-* @param params.fetch - Optional fetch implementation to use instead of the default
-* @returns Response from the server
-*/
-const deleteTodo = async (params) => deleteCalendarObject(params);
-//#endregion
-//#region src/util/authHelpers.ts
-var authHelpers_exports = /* @__PURE__ */ __exportAll({
-	defaultParam: () => defaultParam,
-	fetchOauthTokens: () => fetchOauthTokens,
-	getBasicAuthHeaders: () => getBasicAuthHeaders,
-	getBearerAuthHeaders: () => getBearerAuthHeaders,
-	getOauthHeaders: () => getOauthHeaders,
-	refreshAccessToken: () => refreshAccessToken
-});
-const debug$1 = getLogger("tsdav:authHelper");
-const BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-const NON_LATIN1_BASIC_AUTH_MESSAGE = "The string to be encoded contains characters outside of the Latin1 range.";
-var InvalidCharacterError = class extends Error {
-	constructor(message) {
-		super(message);
-		this.name = "InvalidCharacterError";
-	}
-};
-const assertLatin1 = (charCode) => {
-	if (charCode > 255) throw new InvalidCharacterError(NON_LATIN1_BASIC_AUTH_MESSAGE);
-};
-const encodeBase64 = (input) => {
-	let output = "";
-	let position = 0;
-	while (position < input.length) {
-		const first = input.charCodeAt(position);
-		position += 1;
-		assertLatin1(first);
-		if (position === input.length) {
-			output += BASE64_ALPHABET[Math.floor(first / 4)];
-			output += `${BASE64_ALPHABET[first % 4 * 16]}==`;
-			break;
-		}
-		const second = input.charCodeAt(position);
-		position += 1;
-		assertLatin1(second);
-		if (position === input.length) {
-			output += BASE64_ALPHABET[Math.floor(first / 4)];
-			output += BASE64_ALPHABET[first % 4 * 16 + Math.floor(second / 16)];
-			output += `${BASE64_ALPHABET[second % 16 * 4]}=`;
-			break;
-		}
-		const third = input.charCodeAt(position);
-		position += 1;
-		assertLatin1(third);
-		output += BASE64_ALPHABET[Math.floor(first / 4)];
-		output += BASE64_ALPHABET[first % 4 * 16 + Math.floor(second / 16)];
-		output += BASE64_ALPHABET[second % 16 * 4 + Math.floor(third / 64)];
-		output += BASE64_ALPHABET[third % 64];
-	}
-	return output;
-};
-/**
-* Provide given params as default params to given function with optional params.
-*
-* suitable only for one param functions
-* params are shallow merged
-*/
-const defaultParam = (fn, params) => (...args) => {
-	const overrides = args[0];
-	const mergedParams = {
-		...params,
-		...overrides
-	};
-	if (params.headers || overrides?.headers) mergedParams.headers = mergeHeaders(params.headers, overrides?.headers);
-	return fn(mergedParams);
-};
-const getBasicAuthHeaders = (credentials) => {
-	debug$1(`Basic auth token generated for user "${credentials.username ?? ""}"`);
-	return { authorization: `Basic ${encodeBase64(`${credentials.username}:${credentials.password}`)}` };
-};
-const getBearerAuthHeaders = (credentials) => {
-	return { authorization: `Bearer ${credentials.accessToken}` };
-};
-const fetchOauthTokens = async (credentials, fetchOptions, fetchOverride) => {
-	const requireFields = [
-		"authorizationCode",
-		"redirectUrl",
-		"clientId",
-		"clientSecret",
-		"tokenUrl"
-	];
-	if (!hasFields(credentials, requireFields)) throw new Error(`Oauth credentials missing: ${findMissingFieldNames(credentials, requireFields)}`);
-	const param = new URLSearchParams({
-		grant_type: "authorization_code",
-		code: credentials.authorizationCode,
-		redirect_uri: credentials.redirectUrl,
-		client_id: credentials.clientId,
-		client_secret: credentials.clientSecret
-	});
-	debug$1(`Fetching oauth tokens from ${credentials.tokenUrl}`);
-	const requestFetch = fetchOverride ?? fetch;
-	const { headers: fetchHeaders, ...fetchOptionsWithoutHeaders } = fetchOptions ?? {};
-	const response = await requestFetch(credentials.tokenUrl, {
-		...fetchOptionsWithoutHeaders,
-		method: "POST",
-		body: param.toString(),
-		headers: mergeHeaders({ "content-type": "application/x-www-form-urlencoded" }, fetchHeaders)
-	});
-	if (response.ok) return await response.json();
-	debug$1(`Fetch Oauth tokens failed with status ${response.status}`);
-	return {};
-};
-const refreshAccessToken = async (credentials, fetchOptions, fetchOverride) => {
-	const requireFields = [
-		"refreshToken",
-		"clientId",
-		"clientSecret",
-		"tokenUrl"
-	];
-	if (!hasFields(credentials, requireFields)) throw new Error(`Oauth credentials missing: ${findMissingFieldNames(credentials, requireFields)}`);
-	const param = new URLSearchParams({
-		client_id: credentials.clientId,
-		client_secret: credentials.clientSecret,
-		refresh_token: credentials.refreshToken,
-		grant_type: "refresh_token"
-	});
-	const requestFetch = fetchOverride ?? fetch;
-	const { headers: fetchHeaders, ...fetchOptionsWithoutHeaders } = fetchOptions ?? {};
-	const response = await requestFetch(credentials.tokenUrl, {
-		...fetchOptionsWithoutHeaders,
-		method: "POST",
-		body: param.toString(),
-		headers: mergeHeaders({ "Content-Type": "application/x-www-form-urlencoded" }, fetchHeaders)
-	});
-	if (response.ok) return await response.json();
-	debug$1(`Refresh access token failed with status ${response.status}`);
-	return {};
-};
-/**
-* Resolve OAuth headers for the given credentials.
-*
-* This will mutate `credentials` in-place with the freshly issued
-* `accessToken`, `refreshToken` (if rotated by the provider), and an
-* `expiration` timestamp (ms since epoch). Callers that persist credentials
-* across sessions should re-read these fields from the same credentials
-* object after this call.
-*/
-const getOauthHeaders = async (credentials, fetchOptions, fetchOverride) => {
-	debug$1("Fetching oauth headers");
-	let tokens = {};
-	let didRefresh = false;
-	if (credentials.accessToken && (credentials.expiration == null && !credentials.refreshToken || credentials.expiration != null && Date.now() < credentials.expiration)) tokens = {
-		access_token: credentials.accessToken,
-		refresh_token: credentials.refreshToken
-	};
-	else {
-		tokens = credentials.refreshToken ? await refreshAccessToken(credentials, fetchOptions, fetchOverride) : await fetchOauthTokens(credentials, fetchOptions, fetchOverride);
-		didRefresh = true;
-	}
-	if (didRefresh) {
-		if (tokens.access_token) credentials.accessToken = tokens.access_token;
-		if (tokens.refresh_token) credentials.refreshToken = tokens.refresh_token;
-		if (tokens.access_token) credentials.expiration = typeof tokens.expires_in === "number" ? Date.now() + tokens.expires_in * 1e3 : void 0;
-	}
-	debug$1("Oauth tokens obtained");
-	return {
-		tokens,
-		headers: tokens.access_token ? { authorization: `Bearer ${tokens.access_token}` } : {}
-	};
-};
-//#endregion
 //#region src/util/md5.ts
 /**
 * MD5 message digest (RFC 1321), returning a lowercase hex string.
@@ -2130,7 +1610,7 @@ const md5 = (input) => {
 };
 //#endregion
 //#region src/util/digestAuth.ts
-const debug = getLogger("tsdav:digestAuth");
+const debug$3 = getLogger("tsdav:digestAuth");
 const TOKEN = /[!#$%&'*+.^_`|~0-9A-Za-z-]+/y;
 /**
 * Parse a `WWW-Authenticate` header value into its challenges. `fetch` joins
@@ -2212,8 +1692,21 @@ const selectDigestChallenge = (header, { unlessBasic = false } = {}) => {
 	return challenges.filter(({ scheme }) => scheme === "digest").map(({ params }) => toDigestChallenge(params)).filter((challenge) => challenge != null).sort((a, b) => SUPPORTED_ALGORITHMS.indexOf(a.algorithm) - SUPPORTED_ALGORITHMS.indexOf(b.algorithm))[0];
 };
 const toHex = (bytes) => Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+/**
+* Thrown when a server has to be answered with Digest but the runtime has no
+* WebCrypto. It is a property of the runtime, not of the URL that was asked,
+* so callers that fall back to another URL on a failed request must rethrow it.
+*/
+var DigestUnsupportedError = class extends Error {
+	constructor() {
+		super("tsdav: Digest authentication requires the WebCrypto API (globalThis.crypto), available in Node.js >= 19, browsers, Bun and Deno.");
+		this.code = "TSDAV_DIGEST_UNSUPPORTED";
+		this.name = "DigestUnsupportedError";
+	}
+};
+const isDigestUnsupportedError = (err) => err instanceof DigestUnsupportedError || err?.code === "TSDAV_DIGEST_UNSUPPORTED";
 const getCrypto = () => {
-	if (!globalThis.crypto?.subtle) throw new Error("tsdav: Digest authentication requires the WebCrypto API (globalThis.crypto), available in Node.js >= 19, browsers, Bun and Deno.");
+	if (!globalThis.crypto?.subtle) throw new DigestUnsupportedError();
 	return globalThis.crypto;
 };
 const hash = async (algorithm, data) => algorithm.startsWith("MD5") ? md5(data) : toHex(new Uint8Array(await getCrypto().subtle.digest("SHA-256", new TextEncoder().encode(data))));
@@ -2352,10 +1845,10 @@ const createDigestFetch = (params) => {
 		if (!challenge) return false;
 		getCrypto();
 		if (!state.active) {
-			debug("Server only offers Digest authentication, switching from Basic");
+			debug$3("Server only offers Digest authentication, switching from Basic");
 			state.active = true;
 		}
-		debug(`Digest challenge received for ${origin}${challenge.stale ? " (stale nonce)" : ""}`);
+		debug$3(`Digest challenge received for ${origin}${challenge.stale ? " (stale nonce)" : ""}`);
 		const known = state.challenges.get(origin);
 		state.challenges.set(origin, {
 			challenge,
@@ -2406,6 +1899,529 @@ const createDigestFetch = (params) => {
 				targetInit = withoutAuthorization(targetInit);
 			}
 		}
+	};
+};
+//#endregion
+//#region src/account.ts
+var account_exports = /* @__PURE__ */ __exportAll({
+	createAccount: () => createAccount,
+	fetchHomeUrl: () => fetchHomeUrl,
+	fetchPrincipalUrl: () => fetchPrincipalUrl,
+	serviceDiscovery: () => serviceDiscovery
+});
+const debug$2 = getLogger("tsdav:account");
+const getCandidateRootUrls = (serverUrl, discoveredRootUrl) => {
+	const candidates = [
+		discoveredRootUrl,
+		serverUrl,
+		new URL("/", serverUrl).href
+	];
+	return candidates.filter((url, index) => candidates.indexOf(url) === index);
+};
+const serviceDiscovery = async (params) => {
+	debug$2("Service discovery...");
+	const { account, headers, headersToExclude, fetchOptions = {}, fetch: fetchOverride } = params;
+	const requestFetch = fetchOverride ?? fetch;
+	const endpoint = new URL(account.serverUrl);
+	const { headers: fetchHeaders, ...fetchOptionsWithoutHeaders } = fetchOptions;
+	const uri = new URL(`/.well-known/${account.accountType}`, endpoint);
+	uri.protocol = endpoint.protocol ?? "http";
+	const extractRedirect = (response) => {
+		if (response.status >= 300 && response.status < 400) {
+			const location = response.headers.get("Location");
+			if (typeof location === "string" && location.length) {
+				debug$2(`Service discovery redirected to ${location}`);
+				return new URL(location, uri).href;
+			}
+		}
+	};
+	try {
+		const redirectUrl = extractRedirect(await requestFetch(uri.href, {
+			...fetchOptionsWithoutHeaders,
+			method: "PROPFIND",
+			headers: excludeHeaders(mergeHeaders({ "Content-Type": "text/xml;charset=UTF-8" }, headers, fetchHeaders), headersToExclude),
+			body: `<?xml version="1.0" encoding="utf-8" ?>
+<d:propfind xmlns:d="DAV:">
+  <d:prop>
+    <d:resourcetype/>
+  </d:prop>
+</d:propfind>`,
+			redirect: "manual"
+		}));
+		if (redirectUrl) return redirectUrl;
+	} catch (err) {
+		if (isDigestUnsupportedError(err)) throw err;
+		debug$2(`Service discovery PROPFIND failed: ${err.stack}`);
+	}
+	try {
+		const redirectUrl = extractRedirect(await requestFetch(uri.href, {
+			...fetchOptionsWithoutHeaders,
+			method: "GET",
+			body: void 0,
+			headers: excludeHeaders(mergeHeaders(headers, fetchHeaders), headersToExclude),
+			redirect: "manual"
+		}));
+		if (redirectUrl) return redirectUrl;
+	} catch (err) {
+		if (isDigestUnsupportedError(err)) throw err;
+		debug$2(`Service discovery GET failed: ${err.stack}`);
+	}
+	return endpoint.href;
+};
+const extractHref = (raw) => {
+	if (typeof raw === "string" && raw.trim().length > 0) return raw.trim();
+	if (Array.isArray(raw)) {
+		for (const item of raw) {
+			const found = extractHref(item);
+			if (found) return found;
+		}
+		return;
+	}
+	if (raw && typeof raw === "object") {
+		if ("_cdata" in raw && typeof raw._cdata === "string") {
+			const cdata = raw._cdata.trim();
+			if (cdata.length > 0) return cdata;
+		}
+		if ("_text" in raw && typeof raw._text === "string") {
+			const text = raw._text.trim();
+			if (text.length > 0) return text;
+		}
+	}
+};
+const fetchPrincipalUrl = async (params) => {
+	const { account, headers, headersToExclude, fetchOptions = {}, fetch: fetchOverride } = params;
+	const requiredFields = ["rootUrl"];
+	if (!hasFields(account, requiredFields)) throw new Error(`account must have ${findMissingFieldNames(account, requiredFields)} before fetchPrincipalUrl`);
+	debug$2(`Fetching principal url from path ${account.rootUrl}`);
+	const [response] = await propfind({
+		url: account.rootUrl,
+		props: { [`d:current-user-principal`]: {} },
+		depth: "0",
+		headers: excludeHeaders(headers, headersToExclude),
+		headersToExclude,
+		fetchOptions,
+		fetch: fetchOverride
+	});
+	if (!response?.ok) {
+		debug$2(`Fetch principal url failed: ${response?.statusText ?? "empty response"}`);
+		if (response?.status === 401) throw new Error(`Invalid credentials: PROPFIND ${account.rootUrl} returned 401 Unauthorized`);
+		throw new Error("cannot find principalUrl");
+	}
+	const principalHref = extractHref(response.props?.currentUserPrincipal?.href);
+	if (!principalHref) {
+		debug$2("Fetch principal url failed: missing current-user-principal href");
+		throw new Error("cannot find principalUrl");
+	}
+	debug$2(`Fetched principal url ${principalHref}`);
+	return new URL(principalHref, ensureTrailingSlash(account.rootUrl)).href;
+};
+const fetchHomeUrl = async (params) => {
+	const { account, headers, headersToExclude, fetchOptions = {}, fetch: fetchOverride } = params;
+	const requiredFields = ["principalUrl", "rootUrl"];
+	if (!hasFields(account, requiredFields)) throw new Error(`account must have ${findMissingFieldNames(account, requiredFields)} before fetchHomeUrl`);
+	debug$2(`Fetch home url from ${account.principalUrl}`);
+	const responses = await propfind({
+		url: account.principalUrl,
+		props: account.accountType === "caldav" ? { [`c:calendar-home-set`]: {} } : { [`card:addressbook-home-set`]: {} },
+		depth: "0",
+		headers: excludeHeaders(headers, headersToExclude),
+		headersToExclude,
+		fetchOptions,
+		fetch: fetchOverride
+	});
+	const matched = responses.find((r) => urlMatches(account.principalUrl, r.href, account.rootUrl));
+	if (!matched || !matched.ok) {
+		debug$2(`Fetch home url failed with status ${matched?.statusText} and error ${JSON.stringify(responses.map((r) => r.error))}`);
+		throw new Error("cannot find homeUrl");
+	}
+	const homeHref = extractHref(account.accountType === "caldav" ? matched.props?.calendarHomeSet?.href : matched.props?.addressbookHomeSet?.href);
+	if (!homeHref) {
+		debug$2(`Fetch home url failed: server did not return a ${account.accountType === "caldav" ? "calendar-home-set" : "addressbook-home-set"} href`);
+		throw new Error("cannot find homeUrl");
+	}
+	const result = new URL(homeHref, ensureTrailingSlash(account.rootUrl)).href;
+	debug$2(`Fetched home url ${result}`);
+	return result;
+};
+const createAccount = async (params) => {
+	const { account, headers, loadCollections = false, loadObjects = false, headersToExclude, fetchOptions = {}, fetch: fetchOverride } = params;
+	const newAccount = { ...account };
+	const discoveredRootUrl = account.rootUrl ?? await serviceDiscovery({
+		account,
+		headers: excludeHeaders(headers, headersToExclude),
+		headersToExclude,
+		fetchOptions,
+		fetch: fetchOverride
+	});
+	if (account.rootUrl) newAccount.rootUrl = account.rootUrl;
+	else if (account.principalUrl) newAccount.rootUrl = discoveredRootUrl;
+	else {
+		const findPrincipalUrl = async (rootUrls, index = 0, lastPrincipalError) => {
+			const rootUrl = rootUrls[index];
+			if (!rootUrl) throw lastPrincipalError ?? /* @__PURE__ */ new Error("cannot find principalUrl");
+			try {
+				return {
+					rootUrl,
+					principalUrl: await fetchPrincipalUrl({
+						account: {
+							...newAccount,
+							rootUrl
+						},
+						headers: excludeHeaders(headers, headersToExclude),
+						headersToExclude,
+						fetchOptions,
+						fetch: fetchOverride
+					})
+				};
+			} catch (err) {
+				if (isDigestUnsupportedError(err)) throw err;
+				const isCredentialsError = lastPrincipalError?.message.startsWith("Invalid credentials");
+				return findPrincipalUrl(rootUrls, index + 1, isCredentialsError ? lastPrincipalError : err);
+			}
+		};
+		const { rootUrl, principalUrl } = await findPrincipalUrl(getCandidateRootUrls(account.serverUrl, discoveredRootUrl));
+		newAccount.rootUrl = rootUrl;
+		newAccount.principalUrl = principalUrl;
+	}
+	newAccount.principalUrl = account.principalUrl ?? newAccount.principalUrl ?? await fetchPrincipalUrl({
+		account: newAccount,
+		headers: excludeHeaders(headers, headersToExclude),
+		headersToExclude,
+		fetchOptions,
+		fetch: fetchOverride
+	});
+	newAccount.homeUrl = account.homeUrl ?? await fetchHomeUrl({
+		account: newAccount,
+		headers: excludeHeaders(headers, headersToExclude),
+		headersToExclude,
+		fetchOptions,
+		fetch: fetchOverride
+	});
+	if (loadCollections || loadObjects) {
+		if (account.accountType === "caldav") newAccount.calendars = await fetchCalendars({
+			headers: excludeHeaders(headers, headersToExclude),
+			headersToExclude,
+			account: newAccount,
+			fetchOptions,
+			fetch: fetchOverride
+		});
+		else if (account.accountType === "carddav") newAccount.addressBooks = await fetchAddressBooks({
+			headers: excludeHeaders(headers, headersToExclude),
+			headersToExclude,
+			account: newAccount,
+			fetchOptions,
+			fetch: fetchOverride
+		});
+	}
+	if (loadObjects) {
+		if (account.accountType === "caldav" && newAccount.calendars) newAccount.calendars = await Promise.all(newAccount.calendars.map(async (cal) => ({
+			...cal,
+			objects: await fetchCalendarObjects({
+				calendar: cal,
+				filters: { "comp-filter": { _attributes: { name: "VCALENDAR" } } },
+				urlFilter: (url) => !urlEquals(url, cal.url),
+				headers: excludeHeaders(headers, headersToExclude),
+				headersToExclude,
+				fetchOptions,
+				fetch: fetchOverride
+			})
+		})));
+		else if (account.accountType === "carddav" && newAccount.addressBooks) newAccount.addressBooks = await Promise.all(newAccount.addressBooks.map(async (addr) => ({
+			...addr,
+			objects: await fetchVCards({
+				addressBook: addr,
+				headers: excludeHeaders(headers, headersToExclude),
+				headersToExclude,
+				fetchOptions,
+				fetch: fetchOverride
+			})
+		})));
+	}
+	return newAccount;
+};
+//#endregion
+//#region src/todo.ts
+var todo_exports = /* @__PURE__ */ __exportAll({
+	createTodo: () => createTodo,
+	deleteTodo: () => deleteTodo,
+	fetchTodos: () => fetchTodos,
+	todoMultiGet: () => todoMultiGet,
+	todoQuery: () => todoQuery,
+	updateTodo: () => updateTodo
+});
+const debug$1 = getLogger("tsdav:todo");
+const toCalDAVDateTime = (value) => `${new Date(value).toISOString().slice(0, 19).replace(/[-:.]/g, "")}Z`;
+const buildTodoFilter = (timeRange) => [{ "comp-filter": {
+	_attributes: { name: "VCALENDAR" },
+	"comp-filter": {
+		_attributes: { name: "VTODO" },
+		...timeRange ? { "time-range": { _attributes: {
+			start: toCalDAVDateTime(timeRange.start),
+			end: toCalDAVDateTime(timeRange.end)
+		} } } : {}
+	}
+} }];
+/**
+* Query todos using CalDAV REPORT calendar-query
+*
+* @param params.url - Calendar URL to query
+* @param params.props - Properties to request
+* @param params.filters - Optional CalDAV filters
+* @param params.timezone - Optional timezone
+* @param params.depth - Depth header value
+* @param params.headers - Request headers
+* @param params.headersToExclude - Headers to exclude
+* @param params.fetchOptions - Fetch options
+* @param params.fetch - Optional fetch implementation to use instead of the default
+* @returns Array of DAV responses
+*/
+const todoQuery = async (params) => calendarQuery(params);
+/**
+* Fetch multiple todos by URL using CalDAV calendar-multiget
+*
+* @param params.url - Calendar URL
+* @param params.props - Properties to request
+* @param params.objectUrls - Array of todo object URLs to fetch
+* @param params.timezone - Optional timezone
+* @param params.depth - Depth header value
+* @param params.filters - Optional CalDAV filters
+* @param params.headers - Request headers
+* @param params.headersToExclude - Headers to exclude
+* @param params.fetchOptions - Fetch options
+* @param params.fetch - Optional fetch implementation to use instead of the default
+* @returns Array of DAV responses
+*/
+const todoMultiGet = async (params) => calendarMultiGet(params);
+/**
+* Fetch VTODO objects from a CalDAV calendar with optional filtering
+*
+* @param params.calendar - Calendar to fetch todos from
+* @param params.objectUrls - Optional array of specific todo URLs to fetch
+* @param params.filters - Optional custom CalDAV filters (replaces the default VTODO filter)
+* @param params.timeRange - Optional time range filter in ISO8601 format
+* @param params.expand - Whether to expand recurring todos (requires timeRange)
+* @param params.urlFilter - Custom filter function for todo object URLs
+* @param params.headers - Request headers
+* @param params.headersToExclude - Headers to exclude
+* @param params.useMultiGet - Whether to use multiget (default: true)
+* @param params.fetchOptions - Fetch options
+* @param params.fetch - Optional fetch implementation to use instead of the default
+* @returns Array of todo objects with url, etag, and iCalendar data
+* @throws Error if calendar URL is missing or timeRange is invalid
+*/
+const fetchTodos = async (params) => {
+	const { filters, timeRange, calendar } = params;
+	if (timeRange) validateTimeRange(timeRange);
+	debug$1(`Fetching todo objects from ${calendar?.url}`);
+	if (!calendar?.url) throw new Error("cannot fetchTodos for a calendar without url");
+	return fetchCalendarObjects({
+		...params,
+		filters: filters ?? buildTodoFilter(timeRange)
+	});
+};
+/**
+* Create a new VTODO object in a CalDAV calendar
+*
+* @param params.calendar - Calendar to create the todo in
+* @param params.iCalString - iCalendar data string (must contain UID)
+* @param params.filename - Filename for the todo object
+* @param params.headers - Request headers
+* @param params.headersToExclude - Headers to exclude
+* @param params.fetchOptions - Fetch options
+* @param params.fetch - Optional fetch implementation to use instead of the default
+* @returns Response from the server
+* @throws Error if iCalString does not contain a UID
+*/
+const createTodo = async (params) => {
+	if (!params.iCalString.includes("UID:")) throw new Error("iCalString must contain a UID");
+	return createCalendarObject(params);
+};
+/**
+* Update an existing VTODO object in a CalDAV calendar
+*
+* @param params.calendarObject - Todo object to update (must have etag)
+* @param params.headers - Request headers
+* @param params.headersToExclude - Headers to exclude
+* @param params.fetchOptions - Fetch options
+* @param params.fetch - Optional fetch implementation to use instead of the default
+* @returns Response from the server
+* @throws Error if calendarObject does not have an etag
+*/
+const updateTodo = async (params) => {
+	if (!params.calendarObject.etag) throw new Error("calendarObject must have etag for update - fetch todo first");
+	return updateCalendarObject(params);
+};
+/**
+* Delete a VTODO object from a CalDAV calendar
+*
+* @param params.calendarObject - Todo object to delete
+* @param params.headers - Request headers
+* @param params.headersToExclude - Headers to exclude
+* @param params.fetchOptions - Fetch options
+* @param params.fetch - Optional fetch implementation to use instead of the default
+* @returns Response from the server
+*/
+const deleteTodo = async (params) => deleteCalendarObject(params);
+//#endregion
+//#region src/util/authHelpers.ts
+var authHelpers_exports = /* @__PURE__ */ __exportAll({
+	defaultParam: () => defaultParam,
+	fetchOauthTokens: () => fetchOauthTokens,
+	getBasicAuthHeaders: () => getBasicAuthHeaders,
+	getBearerAuthHeaders: () => getBearerAuthHeaders,
+	getOauthHeaders: () => getOauthHeaders,
+	refreshAccessToken: () => refreshAccessToken
+});
+const debug = getLogger("tsdav:authHelper");
+const BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+const NON_LATIN1_BASIC_AUTH_MESSAGE = "The string to be encoded contains characters outside of the Latin1 range.";
+var InvalidCharacterError = class extends Error {
+	constructor(message) {
+		super(message);
+		this.name = "InvalidCharacterError";
+	}
+};
+const assertLatin1 = (charCode) => {
+	if (charCode > 255) throw new InvalidCharacterError(NON_LATIN1_BASIC_AUTH_MESSAGE);
+};
+const encodeBase64 = (input) => {
+	let output = "";
+	let position = 0;
+	while (position < input.length) {
+		const first = input.charCodeAt(position);
+		position += 1;
+		assertLatin1(first);
+		if (position === input.length) {
+			output += BASE64_ALPHABET[Math.floor(first / 4)];
+			output += `${BASE64_ALPHABET[first % 4 * 16]}==`;
+			break;
+		}
+		const second = input.charCodeAt(position);
+		position += 1;
+		assertLatin1(second);
+		if (position === input.length) {
+			output += BASE64_ALPHABET[Math.floor(first / 4)];
+			output += BASE64_ALPHABET[first % 4 * 16 + Math.floor(second / 16)];
+			output += `${BASE64_ALPHABET[second % 16 * 4]}=`;
+			break;
+		}
+		const third = input.charCodeAt(position);
+		position += 1;
+		assertLatin1(third);
+		output += BASE64_ALPHABET[Math.floor(first / 4)];
+		output += BASE64_ALPHABET[first % 4 * 16 + Math.floor(second / 16)];
+		output += BASE64_ALPHABET[second % 16 * 4 + Math.floor(third / 64)];
+		output += BASE64_ALPHABET[third % 64];
+	}
+	return output;
+};
+/**
+* Provide given params as default params to given function with optional params.
+*
+* suitable only for one param functions
+* params are shallow merged
+*/
+const defaultParam = (fn, params) => (...args) => {
+	const overrides = args[0];
+	const mergedParams = {
+		...params,
+		...overrides
+	};
+	if (params.headers || overrides?.headers) mergedParams.headers = mergeHeaders(params.headers, overrides?.headers);
+	return fn(mergedParams);
+};
+const getBasicAuthHeaders = (credentials) => {
+	debug(`Basic auth token generated for user "${credentials.username ?? ""}"`);
+	return { authorization: `Basic ${encodeBase64(`${credentials.username}:${credentials.password}`)}` };
+};
+const getBearerAuthHeaders = (credentials) => {
+	return { authorization: `Bearer ${credentials.accessToken}` };
+};
+const fetchOauthTokens = async (credentials, fetchOptions, fetchOverride) => {
+	const requireFields = [
+		"authorizationCode",
+		"redirectUrl",
+		"clientId",
+		"clientSecret",
+		"tokenUrl"
+	];
+	if (!hasFields(credentials, requireFields)) throw new Error(`Oauth credentials missing: ${findMissingFieldNames(credentials, requireFields)}`);
+	const param = new URLSearchParams({
+		grant_type: "authorization_code",
+		code: credentials.authorizationCode,
+		redirect_uri: credentials.redirectUrl,
+		client_id: credentials.clientId,
+		client_secret: credentials.clientSecret
+	});
+	debug(`Fetching oauth tokens from ${credentials.tokenUrl}`);
+	const requestFetch = fetchOverride ?? fetch;
+	const { headers: fetchHeaders, ...fetchOptionsWithoutHeaders } = fetchOptions ?? {};
+	const response = await requestFetch(credentials.tokenUrl, {
+		...fetchOptionsWithoutHeaders,
+		method: "POST",
+		body: param.toString(),
+		headers: mergeHeaders({ "content-type": "application/x-www-form-urlencoded" }, fetchHeaders)
+	});
+	if (response.ok) return await response.json();
+	debug(`Fetch Oauth tokens failed with status ${response.status}`);
+	return {};
+};
+const refreshAccessToken = async (credentials, fetchOptions, fetchOverride) => {
+	const requireFields = [
+		"refreshToken",
+		"clientId",
+		"clientSecret",
+		"tokenUrl"
+	];
+	if (!hasFields(credentials, requireFields)) throw new Error(`Oauth credentials missing: ${findMissingFieldNames(credentials, requireFields)}`);
+	const param = new URLSearchParams({
+		client_id: credentials.clientId,
+		client_secret: credentials.clientSecret,
+		refresh_token: credentials.refreshToken,
+		grant_type: "refresh_token"
+	});
+	const requestFetch = fetchOverride ?? fetch;
+	const { headers: fetchHeaders, ...fetchOptionsWithoutHeaders } = fetchOptions ?? {};
+	const response = await requestFetch(credentials.tokenUrl, {
+		...fetchOptionsWithoutHeaders,
+		method: "POST",
+		body: param.toString(),
+		headers: mergeHeaders({ "Content-Type": "application/x-www-form-urlencoded" }, fetchHeaders)
+	});
+	if (response.ok) return await response.json();
+	debug(`Refresh access token failed with status ${response.status}`);
+	return {};
+};
+/**
+* Resolve OAuth headers for the given credentials.
+*
+* This will mutate `credentials` in-place with the freshly issued
+* `accessToken`, `refreshToken` (if rotated by the provider), and an
+* `expiration` timestamp (ms since epoch). Callers that persist credentials
+* across sessions should re-read these fields from the same credentials
+* object after this call.
+*/
+const getOauthHeaders = async (credentials, fetchOptions, fetchOverride) => {
+	debug("Fetching oauth headers");
+	let tokens = {};
+	let didRefresh = false;
+	if (credentials.accessToken && (credentials.expiration == null && !credentials.refreshToken || credentials.expiration != null && Date.now() < credentials.expiration)) tokens = {
+		access_token: credentials.accessToken,
+		refresh_token: credentials.refreshToken
+	};
+	else {
+		tokens = credentials.refreshToken ? await refreshAccessToken(credentials, fetchOptions, fetchOverride) : await fetchOauthTokens(credentials, fetchOptions, fetchOverride);
+		didRefresh = true;
+	}
+	if (didRefresh) {
+		if (tokens.access_token) credentials.accessToken = tokens.access_token;
+		if (tokens.refresh_token) credentials.refreshToken = tokens.refresh_token;
+		if (tokens.access_token) credentials.expiration = typeof tokens.expires_in === "number" ? Date.now() + tokens.expires_in * 1e3 : void 0;
+	}
+	debug("Oauth tokens obtained");
+	return {
+		tokens,
+		headers: tokens.access_token ? { authorization: `Bearer ${tokens.access_token}` } : {}
 	};
 };
 //#endregion
@@ -2736,4 +2752,4 @@ var src_default = {
 	...requestHelpers_exports
 };
 //#endregion
-export { DAVAttributeMap, DAVClient, DAVNamespace, DAVNamespaceShort, ICALObjects, addressBookMultiGet, addressBookQuery, calendarMultiGet, calendarQuery, cleanupFalsy, collectionQuery, createAccount, createCalendarObject, createDAVClient, createDigestFetch, createObject, createTodo, createVCard, davRequest, src_default as default, deleteCalendarObject, deleteObject, deleteTodo, deleteVCard, ensureTrailingSlash, excludeHeaders, fetchAddressBooks, fetchCalendarObjects, fetchCalendarUserAddresses, fetchCalendars, fetchHomeUrl, fetchOauthTokens, fetchPrincipalUrl, fetchTodos, fetchVCards, freeBusyQuery, getBasicAuthHeaders, getBearerAuthHeaders, getDAVAttribute, getOauthHeaders, isCollectionDirty, makeAddressBook, makeCalendar, makeCollection, mergeHeaders, propfind, refreshAccessToken, serviceDiscovery, smartCollectionSync, smartCollectionSyncDetailed, supportedReportSet, syncCalendars, syncCalendarsDetailed, syncCollection, todoMultiGet, todoQuery, updateCalendarObject, updateObject, updateTodo, updateVCard, urlContains, urlEquals, urlMatches };
+export { DAVAttributeMap, DAVClient, DAVNamespace, DAVNamespaceShort, DigestUnsupportedError, ICALObjects, addressBookMultiGet, addressBookQuery, calendarMultiGet, calendarQuery, cleanupFalsy, collectionQuery, createAccount, createCalendarObject, createDAVClient, createDigestFetch, createObject, createTodo, createVCard, davRequest, src_default as default, deleteCalendarObject, deleteObject, deleteTodo, deleteVCard, ensureTrailingSlash, excludeHeaders, fetchAddressBooks, fetchCalendarObjects, fetchCalendarUserAddresses, fetchCalendars, fetchHomeUrl, fetchOauthTokens, fetchPrincipalUrl, fetchTodos, fetchVCards, freeBusyQuery, getBasicAuthHeaders, getBearerAuthHeaders, getDAVAttribute, getOauthHeaders, isCollectionDirty, isDigestUnsupportedError, makeAddressBook, makeCalendar, makeCollection, mergeHeaders, propfind, refreshAccessToken, serviceDiscovery, smartCollectionSync, smartCollectionSyncDetailed, supportedReportSet, syncCalendars, syncCalendarsDetailed, syncCollection, todoMultiGet, todoQuery, updateCalendarObject, updateObject, updateTodo, updateVCard, urlContains, urlEquals, urlMatches };

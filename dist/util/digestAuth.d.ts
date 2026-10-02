@@ -49,6 +49,16 @@ export declare const selectDigestChallenge: (header: string | null | undefined, 
     unlessBasic?: boolean;
 }) => DigestChallenge | undefined;
 /**
+ * Thrown when a server has to be answered with Digest but the runtime has no
+ * WebCrypto. It is a property of the runtime, not of the URL that was asked,
+ * so callers that fall back to another URL on a failed request must rethrow it.
+ */
+export declare class DigestUnsupportedError extends Error {
+    readonly code = "TSDAV_DIGEST_UNSUPPORTED";
+    constructor();
+}
+export declare const isDigestUnsupportedError: (err: unknown) => err is DigestUnsupportedError;
+/**
  * Compute the `Authorization` header value for one request (RFC 7616 §3.4;
  * RFC 2069 form when the challenge carries no qop).
  */

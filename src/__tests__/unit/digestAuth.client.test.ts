@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createDAVClient, DAVClient } from '../../client';
+import { DigestUnsupportedError } from '../../util/digestAuth';
 import { createDigestServer } from '../../util/__tests__/digestServer';
 
 const credentials = { username: 'digestuser', password: 'digest-test-pw' };
@@ -131,5 +132,136 @@ describe('Digest authentication through DAVClient', () => {
     expect(response.status).toBe(401);
     expect(server.fetch).toHaveBeenCalledTimes(1);
     expect(server.authorizationOf(0)).toBeNull();
+  });
+});
+
+describe('account discovery on a runtime without WebCrypto', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const principalMultistatus = () =>
+    xml(`<d:multistatus xmlns:d="DAV:"><d:response><d:href>/dav.php/</d:href>
+      <d:propstat><d:prop><d:current-user-principal><d:href>/dav.php/principals/digestuser/</d:href>
+      </d:current-user-principal></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat>
+      </d:response></d:multistatus>`);
+  const homeMultistatus = () =>
+    xml(`<d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
+      <d:response><d:href>/dav.php/principals/digestuser/</d:href><d:propstat><d:prop>
+      <c:calendar-home-set><d:href>/dav.php/calendars/digestuser/</d:href></c:calendar-home-set>
+      </d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>`);
+
+  // Digest-only: 401 under /dav.php, an unauthenticated HTML page at the
+  // server root, and /.well-known either public or protected as well.
+  const createDigestOnly = (wellKnown: 'redirect' | 'protected') =>
+    vi.fn(async (input: RequestInfo | URL) => {
+      const { pathname } = new URL(String(input));
+      if (pathname.startsWith('/.well-known/') && wellKnown === 'redirect') {
+        return new Response(null, { status: 302, headers: { location: '/dav.php/' } });
+      }
+      if (pathname === '/') {
+        return new Response('<html></html>', {
+          status: 200,
+          headers: { 'content-type': 'text/html' },
+        });
+      }
+      return new Response('', {
+        status: 401,
+        headers: { 'www-authenticate': 'Digest realm="BaikalDAV",qop="auth",nonce="n-1"' },
+      });
+    });
+
+  const cases = (['Digest', 'Basic'] as const).flatMap((authMethod) =>
+    (['redirect', 'protected'] as const).map((wellKnown) => ({ authMethod, wellKnown })),
+  );
+
+  it.each(cases)(
+    'createDAVClient rejects with the WebCrypto requirement (authMethod $authMethod, .well-known $wellKnown)',
+    async ({ authMethod, wellKnown }) => {
+      vi.stubGlobal('crypto', undefined);
+
+      const login = createDAVClient({
+        serverUrl,
+        credentials,
+        authMethod,
+        defaultAccountType: 'caldav',
+        fetch: createDigestOnly(wellKnown),
+      });
+
+      await expect(login).rejects.toBeInstanceOf(DigestUnsupportedError);
+      await expect(login).rejects.toThrow(
+        /Digest authentication requires the WebCrypto API.*Node\.js >= 19/,
+      );
+    },
+  );
+
+  it.each(cases)(
+    'DAVClient.login rejects with the WebCrypto requirement (authMethod $authMethod, .well-known $wellKnown)',
+    async ({ authMethod, wellKnown }) => {
+      vi.stubGlobal('crypto', undefined);
+
+      const client = new DAVClient({
+        serverUrl,
+        credentials,
+        authMethod,
+        defaultAccountType: 'caldav',
+        fetch: createDigestOnly(wellKnown),
+      });
+
+      await expect(client.login()).rejects.toThrow(
+        /Digest authentication requires the WebCrypto API.*Node\.js >= 19/,
+      );
+    },
+  );
+
+  it('leaves a Basic server unaffected', async () => {
+    vi.stubGlobal('crypto', undefined);
+    const basicServer = vi.fn(async (input: RequestInfo | URL, init: RequestInit = {}) => {
+      const { pathname } = new URL(String(input));
+      if (pathname.startsWith('/.well-known/')) {
+        return new Response(null, { status: 302, headers: { location: '/dav.php/' } });
+      }
+      if (!new Headers(init.headers).get('authorization')?.startsWith('Basic ')) {
+        return new Response('', {
+          status: 401,
+          headers: { 'www-authenticate': 'Basic realm="BaikalDAV"' },
+        });
+      }
+      return pathname === '/dav.php/' ? principalMultistatus() : homeMultistatus();
+    });
+
+    const client = new DAVClient({
+      serverUrl,
+      credentials,
+      authMethod: 'Basic',
+      defaultAccountType: 'caldav',
+      fetch: basicServer,
+    });
+    await client.login();
+
+    expect(client.account?.homeUrl).toBe('http://dav.test/dav.php/calendars/digestuser/');
+  });
+
+  it('still falls back to the given URL when the .well-known request fails', async () => {
+    vi.stubGlobal('crypto', undefined);
+    const server = vi.fn(async (input: RequestInfo | URL) => {
+      const { pathname } = new URL(String(input));
+      if (pathname.startsWith('/.well-known/')) {
+        throw new TypeError('fetch failed');
+      }
+      return pathname === '/dav.php' ? principalMultistatus() : homeMultistatus();
+    });
+
+    const client = new DAVClient({
+      serverUrl,
+      credentials,
+      authMethod: 'Basic',
+      defaultAccountType: 'caldav',
+      fetch: server,
+    });
+    await client.login();
+
+    expect(client.account?.rootUrl).toBe('http://dav.test/dav.php');
+    expect(client.account?.homeUrl).toBe('http://dav.test/dav.php/calendars/digestuser/');
   });
 });

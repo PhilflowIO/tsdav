@@ -142,12 +142,30 @@ export const selectDigestChallenge = (
 const toHex = (bytes: Uint8Array): string =>
   Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
 
-const getCrypto = (): Crypto => {
-  if (!globalThis.crypto?.subtle) {
-    throw new Error(
+/**
+ * Thrown when a server has to be answered with Digest but the runtime has no
+ * WebCrypto. It is a property of the runtime, not of the URL that was asked,
+ * so callers that fall back to another URL on a failed request must rethrow it.
+ */
+export class DigestUnsupportedError extends Error {
+  readonly code = 'TSDAV_DIGEST_UNSUPPORTED';
+
+  constructor() {
+    super(
       'tsdav: Digest authentication requires the WebCrypto API (globalThis.crypto), ' +
         'available in Node.js >= 19, browsers, Bun and Deno.',
     );
+    this.name = 'DigestUnsupportedError';
+  }
+}
+
+export const isDigestUnsupportedError = (err: unknown): err is DigestUnsupportedError =>
+  err instanceof DigestUnsupportedError ||
+  (err as { code?: unknown } | null)?.code === 'TSDAV_DIGEST_UNSUPPORTED';
+
+const getCrypto = (): Crypto => {
+  if (!globalThis.crypto?.subtle) {
+    throw new DigestUnsupportedError();
   }
   return globalThis.crypto;
 };
