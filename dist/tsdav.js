@@ -4113,7 +4113,8 @@ const createAccount = async (params) => {
 					})
 				};
 			} catch (err) {
-				return findPrincipalUrl(rootUrls, index + 1, err);
+				const isCredentialsError = lastPrincipalError?.message.startsWith("Invalid credentials");
+				return findPrincipalUrl(rootUrls, index + 1, isCredentialsError ? lastPrincipalError : err);
 			}
 		};
 		const { rootUrl, principalUrl } = await findPrincipalUrl(getCandidateRootUrls(account.serverUrl, discoveredRootUrl));
