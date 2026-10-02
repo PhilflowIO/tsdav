@@ -75,6 +75,21 @@ describe('Digest authentication through DAVClient', () => {
     );
   });
 
+  it('logs in when the client is configured for Basic but the server only speaks Digest', async () => {
+    const server = createBaikal();
+    const client = new DAVClient({
+      serverUrl,
+      credentials,
+      authMethod: 'Basic',
+      fetch: server.fetch,
+    });
+
+    await client.login();
+
+    expect(client.account?.homeUrl).toBe('http://dav.test/dav.php/calendars/digestuser/');
+    expect(server.authorizationOf(server.fetch.mock.calls.length - 1)).toMatch(/^Digest /);
+  });
+
   it('reports a wrong password as invalid credentials', async () => {
     const server = createBaikal();
 

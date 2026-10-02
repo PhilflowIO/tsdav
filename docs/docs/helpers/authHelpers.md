@@ -140,6 +140,10 @@ const client = await createDAVClient({
 });
 ```
 
+with `authMethod: 'Basic'`, a client switches to Digest on its own when the server answers
+`401` with a Digest challenge and no Basic challenge, so servers such as Baïkal that only
+accept Digest work either way. A client never falls back from Digest to Basic.
+
 when calling the request functions directly, wrap `fetch` once and pass it to every call so
 the challenge is reused:
 

@@ -112,19 +112,21 @@ const usesDigestString = (credentials: DAVCredentials): boolean =>
 const digestStates = new WeakMap<DAVClient, DigestAuthState>();
 
 /**
- * The `fetch` used for a client's DAV requests: Digest clients get the Digest
- * handshake, sharing one challenge state across all their requests.
+ * The `fetch` used for a client's DAV requests. Digest clients get the Digest
+ * handshake; Basic clients get it too, inactive until a server answers with a
+ * Digest-only challenge, so users need not know which scheme their server uses.
  */
 const authFetch = (
   client: DAVClient,
   fetchOverride = client.fetchOverride,
 ): typeof globalThis.fetch | undefined => {
-  if (client.authMethod !== 'Digest' || usesDigestString(client.credentials)) {
+  const digest = client.authMethod === 'Digest' && !usesDigestString(client.credentials);
+  if (!digest && client.authMethod !== 'Basic') {
     return fetchOverride;
   }
   let state = digestStates.get(client);
   if (!state) {
-    state = createDigestAuthState(true);
+    state = createDigestAuthState(digest);
     digestStates.set(client, state);
   }
   return createDigestFetch({ credentials: client.credentials, fetch: fetchOverride, state });
