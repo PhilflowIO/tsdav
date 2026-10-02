@@ -132,6 +132,9 @@ tsdav answers the server's `WWW-Authenticate` challenge itself and computes a fr
 `qop=auth`, or the RFC 2069 form when the server sends no `qop`).
 Digest needs the WebCrypto API (`globalThis.crypto`): Node.js >= 19, browsers, Bun or Deno.
 On Node.js 18 a Digest request fails with an error that says so.
+While Digest is in use, tsdav follows redirects itself, since every hop needs its own
+`Authorization` header. The returned `Response` then reports `redirected: false`; compare
+`response.url` with the request URL if you need to know.
 
 ```ts
 const client = await createDAVClient({
