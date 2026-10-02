@@ -254,6 +254,26 @@ describe('createDigestFetch', () => {
     expect(basicOnly).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps counting when parallel requests are challenged with the same nonce', async () => {
+    const server = createDigestServer({ ...credentials, handle: multistatus });
+    let unauthorized = 0;
+    // The three 401s arrive one after another, each after the previous retry.
+    const slowChallenges = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (!new Headers(init?.headers).has('authorization')) {
+        await new Promise((resolve) => setTimeout(resolve, 10 * unauthorized++));
+      }
+      return server.fetch(input, init);
+    });
+    const digestFetch = createDigestFetch({ credentials, fetch: slowChallenges });
+    await Promise.all([1, 2, 3].map(() => digestFetch(url, { method: 'PROPFIND' })));
+
+    const ncs = server.fetch.mock.calls
+      .map((_, call) => server.authorizationOf(call))
+      .filter((authorization) => authorization != null)
+      .map((authorization) => parseDigestParams(authorization).nc);
+    expect(ncs.sort()).toEqual(['00000001', '00000002', '00000003']);
+  });
+
   it('follows redirects with an Authorization header for each hop', async () => {
     const server = createDigestServer({
       ...credentials,

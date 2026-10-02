@@ -4737,6 +4737,9 @@ const createDigestAuthState = (active) => ({
 *   is bound to the request URI. Credentials are only sent to the origin of
 *   the original request. A caller's `redirect: 'manual'` or `'error'` is
 *   passed through to `fetch` unchanged.
+*
+* Requests that start in parallel before a challenge is known each get their
+* own 401 first; a client's login caches the challenge before that happens.
 */
 const createDigestFetch = (params) => {
 	const { credentials, fetch: fetchOverride } = params;
@@ -4746,13 +4749,14 @@ const createDigestFetch = (params) => {
 		const entry = state.challenges.get(origin);
 		if (!entry) return init;
 		entry.nc += 1;
+		const { challenge, nc } = entry;
 		const authorization = await buildDigestAuthorization({
-			challenge: entry.challenge,
+			challenge,
 			username: credentials.username ?? "",
 			password: credentials.password ?? "",
 			method,
 			uri,
-			nc: entry.nc,
+			nc,
 			cnonce: createCnonce()
 		});
 		const headers = new Headers(init.headers);
@@ -4774,9 +4778,10 @@ const createDigestFetch = (params) => {
 			state.active = true;
 		}
 		debug(`Digest challenge received for ${url.origin}${challenge.stale ? " (stale nonce)" : ""}`);
+		const known = state.challenges.get(url.origin);
 		state.challenges.set(url.origin, {
 			challenge,
-			nc: 0
+			nc: known?.challenge.nonce === challenge.nonce ? known.nc : 0
 		});
 		await response.body?.cancel().catch(() => void 0);
 		return requestFetch(input, await authorize(init, url.origin, method, uri));

@@ -77,6 +77,9 @@ export declare const createDigestAuthState: (active: boolean) => DigestAuthState
  *   is bound to the request URI. Credentials are only sent to the origin of
  *   the original request. A caller's `redirect: 'manual'` or `'error'` is
  *   passed through to `fetch` unchanged.
+ *
+ * Requests that start in parallel before a challenge is known each get their
+ * own 401 first; a client's login caches the challenge before that happens.
  */
 export declare const createDigestFetch: (params: {
     credentials: Pick<DAVCredentials, 'username' | 'password'>;
