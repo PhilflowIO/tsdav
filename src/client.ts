@@ -115,13 +115,18 @@ const digestStates = new WeakMap<DAVClient, DigestAuthState>();
  * The `fetch` used for a client's DAV requests. Digest clients get the Digest
  * handshake; Basic clients get it too, inactive until a server answers with a
  * Digest-only challenge, so users need not know which scheme their server uses.
+ * Excluding the `Authorization` header via `headersToExclude` opts out of both.
  */
 const authFetch = (
   client: DAVClient,
   fetchOverride = client.fetchOverride,
+  headersToExclude?: string[],
 ): typeof globalThis.fetch | undefined => {
   const digest = client.authMethod === 'Digest' && !usesDigestString(client.credentials);
-  if (!digest && client.authMethod !== 'Basic') {
+  if (
+    (!digest && client.authMethod !== 'Basic') ||
+    headersToExclude?.some((header) => header.toLowerCase() === 'authorization')
+  ) {
     return fetchOverride;
   }
   let state = digestStates.get(client);
@@ -266,6 +271,7 @@ export class DAVClient {
   }
 
   private async requestDefaults(params?: {
+    headersToExclude?: string[];
     fetchOptions?: RequestInit;
     fetch?: typeof globalThis.fetch;
   }) {
@@ -279,7 +285,7 @@ export class DAVClient {
       headers: this.authHeaders,
       account: this.account,
       fetchOptions: this.fetchOptions,
-      fetch: authFetch(this, params?.fetch),
+      fetch: authFetch(this, params?.fetch, params?.headersToExclude),
     };
   }
 
@@ -334,7 +340,7 @@ export class DAVClient {
         headers: mergeHeaders(defaults.headers, headers),
       },
       fetchOptions: fetchOptions ?? this.fetchOptions,
-      fetch: authFetch(this, fetchOverride2),
+      fetch: authFetch(this, fetchOverride2, params0.headersToExclude),
     });
   }
 
@@ -394,7 +400,7 @@ export class DAVClient {
       loadCollections,
       loadObjects,
       fetchOptions: fetchOptions ?? this.fetchOptions,
-      fetch: authFetch(this, fetch),
+      fetch: authFetch(this, fetch, headersToExclude),
     });
   }
 

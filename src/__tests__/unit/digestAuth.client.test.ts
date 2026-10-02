@@ -116,4 +116,20 @@ describe('Digest authentication through DAVClient', () => {
 
     expect(response.status).toBe(201);
   });
+
+  it('sends no Authorization when the caller excludes it', async () => {
+    const server = createBaikal();
+    const client = new DAVClient({ serverUrl, credentials, authMethod: 'Digest' });
+
+    const response = await client.createObject({
+      url: `${calendar.url}public.ics`,
+      data: 'BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n',
+      headersToExclude: ['Authorization'],
+      fetch: server.fetch,
+    });
+
+    expect(response.status).toBe(401);
+    expect(server.fetch).toHaveBeenCalledTimes(1);
+    expect(server.authorizationOf(0)).toBeNull();
+  });
 });
