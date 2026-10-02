@@ -2333,8 +2333,8 @@ const createDigestAuthState = (active) => ({
 * - With an inactive `state` (Basic auth), the wrapper only switches to
 *   Digest when a 401 offers Digest and no Basic. It never falls back from
 *   Digest to Basic.
-* - Redirects are followed by the wrapper, because the `Authorization` header
-*   is bound to the request URI. Credentials are only sent to the origin of
+* - While Digest is active, redirects are followed by the wrapper, because the
+*   `Authorization` header is bound to the request URI. Credentials are only sent to the origin of
 *   the original request. A caller's `redirect: 'manual'` or `'error'` is
 *   passed through to `fetch` unchanged.
 *
@@ -2366,30 +2366,39 @@ const createDigestFetch = (params) => {
 			headers
 		};
 	};
-	const request = async (input, init, url) => {
-		const method = (init.method ?? "GET").toUpperCase();
-		const uri = `${url.pathname}${url.search}`;
-		const response = await requestFetch(input, state.active ? await authorize(init, url.origin, method, uri) : init);
-		if (response.status !== 401 || !isReplayable(init.body)) return response;
+	const acceptChallenge = (response, origin) => {
 		const challenge = selectDigestChallenge(response.headers.get("www-authenticate"), { unlessBasic: !state.active });
-		if (!challenge) return response;
+		if (!challenge) return false;
 		getCrypto();
 		if (!state.active) {
 			debug$1("Server only offers Digest authentication, switching from Basic");
 			state.active = true;
 		}
-		debug$1(`Digest challenge received for ${url.origin}${challenge.stale ? " (stale nonce)" : ""}`);
-		const known = state.challenges.get(url.origin);
-		state.challenges.set(url.origin, {
+		debug$1(`Digest challenge received for ${origin}${challenge.stale ? " (stale nonce)" : ""}`);
+		const known = state.challenges.get(origin);
+		state.challenges.set(origin, {
 			challenge,
 			nc: known?.challenge.nonce === challenge.nonce ? known.nc : 0
 		});
+		return true;
+	};
+	const request = async (input, init, url) => {
+		const method = (init.method ?? "GET").toUpperCase();
+		const uri = `${url.pathname}${url.search}`;
+		const response = await requestFetch(input, await authorize(init, url.origin, method, uri));
+		if (response.status !== 401 || !isReplayable(init.body) || !acceptChallenge(response, url.origin)) return response;
 		await response.body?.cancel().catch(() => void 0);
 		return requestFetch(input, await authorize(init, url.origin, method, uri));
 	};
 	return async (input, init = {}) => {
 		const url = toURL(input);
 		if (!url) return requestFetch(input, init);
+		if (!state.active) {
+			const response = await requestFetch(input, init);
+			const origin = response.url ? new URL(response.url).origin : url.origin;
+			if (response.status !== 401 || !isReplayable(init.body) || origin !== url.origin || !acceptChallenge(response, origin)) return response;
+			await response.body?.cancel().catch(() => void 0);
+		}
 		if ((init.redirect ?? "follow") !== "follow" || !isReplayable(init.body)) return request(input, init, url);
 		let target = input;
 		let targetUrl = url;

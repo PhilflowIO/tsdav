@@ -459,7 +459,40 @@ describe('createDigestFetch', () => {
 
       expect(response.status).toBe(207);
       expect(basicServer).toHaveBeenCalledTimes(1);
-      expect(basicServer).toHaveBeenCalledWith(url, { ...init, redirect: 'manual' });
+      expect(basicServer).toHaveBeenCalledWith(url, init);
+    });
+
+    it('ignores a Digest challenge from another origin that fetch was redirected to', async () => {
+      const challenged = new Response('', {
+        status: 401,
+        headers: { 'www-authenticate': 'Digest realm="other", nonce="n", qop="auth"' },
+      });
+      Object.defineProperty(challenged, 'url', { value: 'http://other.test/x' });
+      const server = vi.fn(async () => challenged);
+      const state = createDigestAuthState(false);
+      const response = await createDigestFetch({ credentials, fetch: server, state })(
+        url,
+        basicInit(),
+      );
+
+      expect(response.status).toBe(401);
+      expect(state.active).toBe(false);
+      expect(server).toHaveBeenCalledTimes(1);
+    });
+
+    it('leaves redirects to fetch while Basic is in use', async () => {
+      const basicServer = vi.fn(
+        async () => new Response(null, { status: 301, headers: { location: '/elsewhere' } }),
+      );
+      const init = basicInit();
+      await createDigestFetch({
+        credentials,
+        fetch: basicServer,
+        state: createDigestAuthState(false),
+      })(url, init);
+
+      expect(basicServer).toHaveBeenCalledTimes(1);
+      expect(basicServer).toHaveBeenCalledWith(url, init);
     });
   });
 });
