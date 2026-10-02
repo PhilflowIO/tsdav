@@ -283,11 +283,11 @@ describe('createDAVClient auth methods', () => {
     expect(calledHeaders.authorization).toBe('Bearer test-token');
   });
 
-  it('should handle Digest auth', async () => {
+  it('should send a precomputed digestString when no password is given', async () => {
     const mockFetch = buildMockFetch();
     const client = await createDAVClient({
       serverUrl: 'http://example.com',
-      credentials: mockCredentials,
+      credentials: { digestString: mockCredentials.digestString },
       authMethod: 'Digest',
       fetch: mockFetch,
     });

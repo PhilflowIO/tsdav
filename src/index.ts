@@ -93,6 +93,11 @@ export {
   refreshAccessToken,
 } from './util/authHelpers';
 export {
+  createDigestFetch,
+  DigestUnsupportedError,
+  isDigestUnsupportedError,
+} from './util/digestAuth';
+export {
   urlContains,
   urlEquals,
   urlMatches,

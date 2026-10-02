@@ -1,18 +1,31 @@
-## v2.3.5-philflow.2 (PhilflowIO fork)
+## v2.3.5+philflow.5 (PhilflowIO fork)
+
+**Installing this fork.** The fork is not on npm. Each fork tag has a GitHub Release with the packed tarball attached; depend on that URL:
+
+```json
+"tsdav": "https://github.com/PhilflowIO/tsdav/releases/download/v2.3.5%2Bphilflow.5/tsdav-2.3.5-philflow.5.tgz"
+```
+
+Installing by git URL (`github:PhilflowIO/tsdav#<tag>`) is unsupported on npm < 10.9, which includes the npm shipped with Node 18 and 20.
 
 Upstream v2.3.5 merged into the fork. Fork-only additions on top of upstream:
 
 **features**
 - VTODO (tasks/reminders) API: `todoQuery`, `todoMultiGet`, `fetchTodos`, `createTodo`, `updateTodo`, `deleteTodo`, exposed on `DAVClient` and `createDAVClient`
 - `makeAddressBook` (CardDAV MKCOL), exposed on `DAVClient` and `createDAVClient`
+- HTTP Digest authentication (RFC 7616): `authMethod: 'Digest'` takes username and password and answers the server's challenge per request; a `'Basic'` client switches to Digest when the server only offers Digest. Needs WebCrypto (Node.js >= 19)
 
 ##### bug fixes
+- Digest on a runtime without WebCrypto (Node 18) fails login with `DigestUnsupportedError` ("Digest authentication requires the WebCrypto API") instead of `cannot find principalUrl`; account discovery no longer swallows it
 - honour the `fetch` override in `makeAddressBook` and in the todo API
 - caller-supplied `headers` no longer replace the client's auth headers (fixed upstream in v2.3.5, regression test added in the fork)
 
 ##### build
-- `dist/` stays committed; CI rebuilds it on every push and fails on any difference, and installs the commit as an npm git dependency
-- `prepare` only installs git hooks; consumers no longer build on install
+- the version is `2.3.5+philflow.N` (build metadata) rather than a `-philflow.N` prerelease, which sorts before 2.3.5 and fails peer ranges such as `tsdav@^2.0.0`
+- consumed as a release tarball: pushing a fork tag builds, packs and attaches `tsdav-2.3.5-philflow.N.tgz` to a GitHub Release, then installs that URL on Node 18, 20 and 22. The fork is never published to npm
+- git-URL installs are unsupported on npm < 10.9: npm installs a git dependency's devDependencies to run `prepare`, and npm 10.8.2 crashes there
+- `dist/` stays committed; CI rebuilds it on every push and fails on any difference, and installs the packed tarball
+- `prepare` only installs git hooks and does not run for tarball installs; consumers never build on install
 
 ##### behaviour changes for fork users (from upstream v2.3.5)
 - `validateISO8601TimeRange` is gone; use `validateTimeRange`

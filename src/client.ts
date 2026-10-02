@@ -69,6 +69,7 @@ import {
   getOauthHeaders,
   getBearerAuthHeaders,
 } from './util/authHelpers';
+import { createDigestAuthState, createDigestFetch, DigestAuthState } from './util/digestAuth';
 import { Optional } from './util/typeHelpers';
 import { mergeHeaders } from './util/requestHelpers';
 
@@ -90,7 +91,11 @@ const resolveAuthHeaders = async (
       return headers;
     }
     case 'Digest':
-      return { Authorization: `Digest ${client.credentials.digestString}` };
+      // Digest headers are computed per request by `authFetch`; only the
+      // deprecated precomputed `digestString` is still sent as a static header.
+      return usesDigestString(client.credentials)
+        ? { Authorization: `Digest ${client.credentials.digestString}` }
+        : {};
     case 'Custom':
       if (!client.authFunction) {
         throw new Error("authMethod 'Custom' requires an authFunction to produce request headers");
@@ -99,6 +104,37 @@ const resolveAuthHeaders = async (
     default:
       throw new Error('Invalid auth method');
   }
+};
+
+const usesDigestString = (credentials: DAVCredentials): boolean =>
+  credentials.digestString != null && credentials.password == null;
+
+const digestStates = new WeakMap<DAVClient, DigestAuthState>();
+
+/**
+ * The `fetch` used for a client's DAV requests. Digest clients get the Digest
+ * handshake; Basic clients get it too, inactive until a server answers with a
+ * Digest-only challenge, so users need not know which scheme their server uses.
+ * Excluding the `Authorization` header via `headersToExclude` opts out of both.
+ */
+const authFetch = (
+  client: DAVClient,
+  fetchOverride = client.fetchOverride,
+  headersToExclude?: string[],
+): typeof globalThis.fetch | undefined => {
+  const digest = client.authMethod === 'Digest' && !usesDigestString(client.credentials);
+  if (
+    (!digest && client.authMethod !== 'Basic') ||
+    headersToExclude?.some((header) => header.toLowerCase() === 'authorization')
+  ) {
+    return fetchOverride;
+  }
+  let state = digestStates.get(client);
+  if (!state) {
+    state = createDigestAuthState(digest);
+    digestStates.set(client, state);
+  }
+  return createDigestFetch({ credentials: client.credentials, fetch: fetchOverride, state });
 };
 
 export const createDAVClient = async (params: ConstructorParameters<typeof DAVClient>[0]) => {
@@ -113,7 +149,7 @@ export const createDAVClient = async (params: ConstructorParameters<typeof DAVCl
         },
         headers: client.authHeaders,
         fetchOptions: client.fetchOptions,
-        fetch: client.fetchOverride,
+        fetch: authFetch(client),
       })
     : undefined;
   return {
@@ -235,6 +271,7 @@ export class DAVClient {
   }
 
   private async requestDefaults(params?: {
+    headersToExclude?: string[];
     fetchOptions?: RequestInit;
     fetch?: typeof globalThis.fetch;
   }) {
@@ -248,7 +285,7 @@ export class DAVClient {
       headers: this.authHeaders,
       account: this.account,
       fetchOptions: this.fetchOptions,
-      fetch: this.fetchOverride,
+      fetch: authFetch(this, params?.fetch, params?.headersToExclude),
     };
   }
 
@@ -257,10 +294,12 @@ export class DAVClient {
     params: Parameters<F>[0],
   ): Promise<Awaited<ReturnType<F>>> {
     const defaults = await this.requestDefaults(params);
+    // `defaults.fetch` already wraps a per-call `fetch` override with auth.
+    const callParams = params ? { ...params, fetch: defaults.fetch } : params;
     return await defaultParam(
       fn,
       defaults as Partial<Parameters<F>[0]>,
-    )(...([params] as Parameters<F>));
+    )(...([callParams] as Parameters<F>));
   }
 
   async login(options?: { loadCollections?: boolean; loadObjects?: boolean }): Promise<void> {
@@ -277,7 +316,7 @@ export class DAVClient {
           loadCollections: options?.loadCollections,
           loadObjects: options?.loadObjects,
           fetchOptions: this.fetchOptions,
-          fetch: this.fetchOverride,
+          fetch: authFetch(this),
         })
       : undefined;
   }
@@ -301,7 +340,7 @@ export class DAVClient {
         headers: mergeHeaders(defaults.headers, headers),
       },
       fetchOptions: fetchOptions ?? this.fetchOptions,
-      fetch: fetchOverride2 ?? this.fetchOverride,
+      fetch: authFetch(this, fetchOverride2, params0.headersToExclude),
     });
   }
 
@@ -361,7 +400,7 @@ export class DAVClient {
       loadCollections,
       loadObjects,
       fetchOptions: fetchOptions ?? this.fetchOptions,
-      fetch: fetch ?? this.fetchOverride,
+      fetch: authFetch(this, fetch, headersToExclude),
     });
   }
 

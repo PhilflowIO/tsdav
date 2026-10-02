@@ -27,5 +27,5 @@ refer to [this page](https://developers.google.com/identity/protocols/oauth2) fo
 - `accessToken` oauth access token
 - `refreshToken` oauth refresh token
 - `expiration` oauth access token expiration time
-- `digestString` string used for digest auth
+- `digestString` **deprecated**, a precomputed digest string sent as-is; only used with `authMethod: 'Digest'` when no `password` is set. Use `username` and `password` instead
 - `customData` custom data used for custom auth, can be anything
