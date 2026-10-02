@@ -1,4 +1,4 @@
-## v2.3.5-philflow.1 (PhilflowIO fork)
+## v2.3.5-philflow.2 (PhilflowIO fork)
 
 Upstream v2.3.5 merged into the fork. Fork-only additions on top of upstream:
 
@@ -11,7 +11,13 @@ Upstream v2.3.5 merged into the fork. Fork-only additions on top of upstream:
 - caller-supplied `headers` no longer replace the client's auth headers (fixed upstream in v2.3.5, regression test added in the fork)
 
 ##### build
-- `prepare` rebuilds `dist/` so git-URL installs get a fresh build; `dist/` stays committed and CI verifies it against a fresh build
+- `dist/` stays committed; CI rebuilds it on every push and fails on any difference, and installs the commit as an npm git dependency
+- `prepare` only installs git hooks; consumers no longer build on install
+
+##### behaviour changes for fork users (from upstream v2.3.5)
+- `validateISO8601TimeRange` is gone; use `validateTimeRange`
+- `fetchTodos` with `expand: true` now requires a `timeRange` instead of silently skipping the expansion
+- fetching objects by URL now throws on a failed or incomplete server response instead of returning a partial or empty list
 
 ## v2.3.5
 
