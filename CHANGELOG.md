@@ -1,16 +1,18 @@
-## v2.3.5-philflow.2 (PhilflowIO fork)
+## v2.3.5+philflow.3 (PhilflowIO fork)
 
 Upstream v2.3.5 merged into the fork. Fork-only additions on top of upstream:
 
 **features**
 - VTODO (tasks/reminders) API: `todoQuery`, `todoMultiGet`, `fetchTodos`, `createTodo`, `updateTodo`, `deleteTodo`, exposed on `DAVClient` and `createDAVClient`
 - `makeAddressBook` (CardDAV MKCOL), exposed on `DAVClient` and `createDAVClient`
+- HTTP Digest authentication (RFC 7616): `authMethod: 'Digest'` takes username and password and answers the server's challenge per request; a `'Basic'` client switches to Digest when the server only offers Digest. Needs WebCrypto (Node.js >= 19)
 
 ##### bug fixes
 - honour the `fetch` override in `makeAddressBook` and in the todo API
 - caller-supplied `headers` no longer replace the client's auth headers (fixed upstream in v2.3.5, regression test added in the fork)
 
 ##### build
+- the version is `2.3.5+philflow.N` (build metadata) rather than a `-philflow.N` prerelease, which sorts before 2.3.5 and fails peer ranges such as `tsdav@^2.0.0`
 - `dist/` stays committed; CI rebuilds it on every push and fails on any difference, and installs the commit as an npm git dependency
 - `prepare` only installs git hooks; consumers no longer build on install
 
