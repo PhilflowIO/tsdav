@@ -382,6 +382,31 @@ describe('createDigestFetch', () => {
     expect(new Headers(other.mock.calls[0][1]?.headers).has('authorization')).toBe(false);
   });
 
+  it('does not sign a hop back to the original origin once the chain left it', async () => {
+    const server = createDigestServer({
+      ...credentials,
+      handle: () => new Response(null, { status: 201 }),
+    });
+    const routed = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const target = new URL(String(input));
+      if (target.origin === 'http://other.test') {
+        return new Response(null, { status: 307, headers: { location: 'http://dav.test/victim' } });
+      }
+      if (target.pathname === '/bounce' && new Headers(init?.headers).has('authorization')) {
+        return new Response(null, { status: 307, headers: { location: 'http://other.test/x' } });
+      }
+      return server.fetch(input, init);
+    });
+    const digestFetch = createDigestFetch({ credentials, fetch: routed });
+    await digestFetch(url, { method: 'PROPFIND' });
+    const response = await digestFetch('http://dav.test/bounce', { method: 'PUT', body: 'data' });
+
+    expect(response.status).toBe(401);
+    const [input, init] = routed.mock.calls[routed.mock.calls.length - 1];
+    expect(String(input)).toBe('http://dav.test/victim');
+    expect(new Headers(init?.headers).has('authorization')).toBe(false);
+  });
+
   it("leaves redirects to the caller with redirect: 'manual'", async () => {
     const server = createDigestServer({
       ...credentials,

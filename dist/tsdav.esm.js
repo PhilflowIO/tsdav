@@ -2381,8 +2381,9 @@ const createDigestFetch = (params) => {
 			...init,
 			redirect: "manual"
 		};
+		let leftOrigin = false;
 		for (let redirects = 0;; redirects += 1) {
-			const response = targetUrl.origin === url.origin ? await request(target, targetInit, targetUrl) : await requestFetch(target, targetInit);
+			const response = leftOrigin ? await requestFetch(target, targetInit) : await request(target, targetInit, targetUrl);
 			if (response.type === "opaqueredirect") return request(input, init, url);
 			const location = response.headers.get("location");
 			if (!REDIRECT_STATUSES.includes(response.status) || !location) return response;
@@ -2391,7 +2392,10 @@ const createDigestFetch = (params) => {
 			targetUrl = new URL(location, targetUrl);
 			target = targetUrl.href;
 			targetInit = redirectInit(response.status, targetInit);
-			if (targetUrl.origin !== url.origin) targetInit = withoutAuthorization(targetInit);
+			if (targetUrl.origin !== url.origin) {
+				leftOrigin = true;
+				targetInit = withoutAuthorization(targetInit);
+			}
 		}
 	};
 };

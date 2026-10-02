@@ -392,11 +392,11 @@ export const createDigestFetch = (params: {
     let target: RequestInfo | URL = input;
     let targetUrl = url;
     let targetInit: RequestInit = { ...init, redirect: 'manual' };
+    let leftOrigin = false;
     for (let redirects = 0; ; redirects += 1) {
-      const response =
-        targetUrl.origin === url.origin
-          ? await request(target, targetInit, targetUrl)
-          : await requestFetch(target, targetInit);
+      const response = leftOrigin
+        ? await requestFetch(target, targetInit)
+        : await request(target, targetInit, targetUrl);
       if (response.type === 'opaqueredirect') {
         // Browsers hide the redirect target from 'manual'; let fetch follow it.
         return request(input, init, url);
@@ -413,7 +413,9 @@ export const createDigestFetch = (params: {
       target = targetUrl.href;
       targetInit = redirectInit(response.status, targetInit);
       if (targetUrl.origin !== url.origin) {
-        // Like fetch, never send the Authorization header to another origin.
+        // Like fetch, never send the Authorization header to another origin,
+        // and do not sign again if that origin redirects back.
+        leftOrigin = true;
         targetInit = withoutAuthorization(targetInit);
       }
     }
