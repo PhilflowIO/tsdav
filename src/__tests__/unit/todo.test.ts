@@ -127,4 +127,11 @@ describe('fetchTodos request shape', () => {
     ).rejects.toThrow('start must be before end');
     expect(mockedDavRequest).not.toHaveBeenCalled();
   });
+
+  it('names fetchTodos when the calendar has no url', async () => {
+    await expect(fetchTodos({ calendar: {} })).rejects.toThrow(
+      'cannot fetchTodos for a calendar without url',
+    );
+    expect(mockedDavRequest).not.toHaveBeenCalled();
+  });
 });
