@@ -2363,24 +2363,26 @@ const createDigestFetch = (params) => {
 		});
 		return true;
 	};
-	const request = async (input, init, url) => {
+	const request = async (input, init, url, retry) => {
 		const method = (init.method ?? "GET").toUpperCase();
 		const uri = `${url.pathname}${url.search}`;
 		const response = await requestFetch(input, await authorize(init, url.origin, method, uri));
-		if (response.status !== 401 || !isReplayable(init.body) || !acceptChallenge(response, url.origin)) return response;
+		if (response.status !== 401 || !retry || !isReplayable(init.body) || !acceptChallenge(response, url.origin)) return response;
 		await response.body?.cancel().catch(() => void 0);
 		return requestFetch(input, await authorize(init, url.origin, method, uri));
 	};
 	return async (input, init = {}) => {
 		const url = toURL(input);
 		if (!url) return requestFetch(input, init);
+		let challenged = false;
 		if (!state.active) {
 			const response = await requestFetch(input, init);
 			const origin = response.url ? new URL(response.url).origin : url.origin;
 			if (response.status !== 401 || !isReplayable(init.body) || origin !== url.origin || !acceptChallenge(response, origin)) return response;
 			await response.body?.cancel().catch(() => void 0);
+			challenged = true;
 		}
-		if ((init.redirect ?? "follow") !== "follow" || !isReplayable(init.body)) return request(input, init, url);
+		if ((init.redirect ?? "follow") !== "follow" || !isReplayable(init.body)) return request(input, init, url, !challenged);
 		let target = input;
 		let targetUrl = url;
 		let targetInit = {
@@ -2389,8 +2391,9 @@ const createDigestFetch = (params) => {
 		};
 		let leftOrigin = false;
 		for (let redirects = 0;; redirects += 1) {
-			const response = leftOrigin ? await requestFetch(target, targetInit) : await request(target, targetInit, targetUrl);
-			if (response.type === "opaqueredirect") return request(input, init, url);
+			const response = leftOrigin ? await requestFetch(target, targetInit) : await request(target, targetInit, targetUrl, !challenged);
+			challenged = false;
+			if (response.type === "opaqueredirect") return request(input, init, url, true);
 			const location = response.headers.get("location");
 			if (!REDIRECT_STATUSES.includes(response.status) || !location) return response;
 			if (redirects === MAX_REDIRECTS) throw new TypeError("tsdav: too many redirects");

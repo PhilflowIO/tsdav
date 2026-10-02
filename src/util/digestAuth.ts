@@ -347,11 +347,13 @@ export const createDigestFetch = (params: {
     return true;
   };
 
-  // One request to `url`, plus the retry that answers a Digest challenge.
+  // One request to `url`, plus the retry that answers a Digest challenge
+  // unless the caller already answered one for this request.
   const request = async (
     input: RequestInfo | URL,
     init: RequestInit,
     url: URL,
+    retry: boolean,
   ): Promise<Response> => {
     const method = (init.method ?? 'GET').toUpperCase();
     const uri = `${url.pathname}${url.search}`;
@@ -359,6 +361,7 @@ export const createDigestFetch = (params: {
     const response = await requestFetch(input, await authorize(init, url.origin, method, uri));
     if (
       response.status !== 401 ||
+      !retry ||
       !isReplayable(init.body) ||
       !acceptChallenge(response, url.origin)
     ) {
@@ -371,6 +374,8 @@ export const createDigestFetch = (params: {
   return async (input, init = {}) => {
     const url = toURL(input);
     if (!url) return requestFetch(input, init);
+    // Set when the Basic request below was answered with the switch to Digest.
+    let challenged = false;
     if (!state.active) {
       // Basic auth: one plain request, fetch follows redirects itself. Only a
       // 401 from the original origin can switch the client to Digest.
@@ -385,9 +390,10 @@ export const createDigestFetch = (params: {
         return response;
       }
       await response.body?.cancel().catch(() => undefined);
+      challenged = true;
     }
     if ((init.redirect ?? 'follow') !== 'follow' || !isReplayable(init.body)) {
-      return request(input, init, url);
+      return request(input, init, url, !challenged);
     }
 
     let target: RequestInfo | URL = input;
@@ -397,10 +403,11 @@ export const createDigestFetch = (params: {
     for (let redirects = 0; ; redirects += 1) {
       const response = leftOrigin
         ? await requestFetch(target, targetInit)
-        : await request(target, targetInit, targetUrl);
+        : await request(target, targetInit, targetUrl, !challenged);
+      challenged = false;
       if (response.type === 'opaqueredirect') {
         // Browsers hide the redirect target from 'manual'; let fetch follow it.
-        return request(input, init, url);
+        return request(input, init, url, true);
       }
       const location = response.headers.get('location');
       if (!REDIRECT_STATUSES.includes(response.status) || !location) {

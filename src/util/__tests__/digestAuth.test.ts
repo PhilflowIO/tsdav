@@ -470,6 +470,18 @@ describe('createDigestFetch', () => {
       expect(server.authorizationOf(2)).toMatch(/^Digest .*nc=00000002/);
     });
 
+    it('answers the challenge only once when the password is wrong', async () => {
+      const server = createDigestServer({ ...credentials, handle: multistatus });
+      const response = await createDigestFetch({
+        credentials: { ...credentials, password: 'wrong' },
+        fetch: server.fetch,
+        state: createDigestAuthState(false),
+      })(url, basicInit());
+
+      expect(response.status).toBe(401);
+      expect(server.fetch).toHaveBeenCalledTimes(2);
+    });
+
     it('stays on Basic when the server also offers Basic', async () => {
       const server = createDigestServer({ ...credentials, offerBasic: true, handle: multistatus });
       const state = createDigestAuthState(false);
