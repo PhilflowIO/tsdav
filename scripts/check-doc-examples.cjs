@@ -14,28 +14,29 @@ try {
     writeFileSync(filename, source);
     return filename;
   });
-  execFileSync(
-    'pnpm',
-    [
-      'exec',
-      'tsc',
-      '--ignoreConfig',
-      '--noEmit',
-      '--strict',
-      '--skipLibCheck',
-      '--esModuleInterop',
-      '--target',
-      'ES2018',
-      '--lib',
-      'ES2019,DOM,DOM.Iterable',
-      '--module',
-      'preserve',
-      '--moduleResolution',
-      'bundler',
-      ...sources,
-    ],
-    { cwd: root, stdio: 'inherit' },
+  // The docs import `tsdav`, the name consumers install this fork under
+  // (`"tsdav": "npm:@philflow/tsdav@<version>"`). The package itself is
+  // published as @philflow/tsdav, so `tsdav` is mapped to it here, the way
+  // the alias maps it in a consumer's node_modules.
+  const tsconfig = join(directory, 'tsconfig.json');
+  writeFileSync(
+    tsconfig,
+    JSON.stringify({
+      compilerOptions: {
+        noEmit: true,
+        strict: true,
+        skipLibCheck: true,
+        esModuleInterop: true,
+        target: 'ES2018',
+        lib: ['ES2019', 'DOM', 'DOM.Iterable'],
+        module: 'preserve',
+        moduleResolution: 'bundler',
+        paths: { tsdav: [root] },
+      },
+      files: sources,
+    }),
   );
+  execFileSync('pnpm', ['exec', 'tsc', '-p', tsconfig], { cwd: root, stdio: 'inherit' });
 } finally {
   rmSync(directory, { recursive: true, force: true });
 }
