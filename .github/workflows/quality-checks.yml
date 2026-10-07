@@ -6,6 +6,10 @@ on:
   push:
     branches: [master, main]
 
+# Read-only token unless a job asks for more; none of these jobs writes.
+permissions:
+  contents: read
+
 jobs:
   validate:
     name: Validate Code Quality

@@ -7,6 +7,10 @@ on:
     types: ['opened', 'synchronize']
     branches: [master, main]
 
+# Read-only token unless a job asks for more; none of these jobs writes.
+permissions:
+  contents: read
+
 jobs:
   automated-test:
     runs-on: ubuntu-latest
