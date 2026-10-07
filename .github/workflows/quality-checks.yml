@@ -6,6 +6,10 @@ on:
   push:
     branches: [master, main]
 
+# Read-only token unless a job asks for more; none of these jobs writes.
+permissions:
+  contents: read
+
 jobs:
   validate:
     name: Validate Code Quality
@@ -110,24 +114,25 @@ jobs:
 
           echo "✅ dist matches a fresh build from src"
 
-      # Consumers (dav-mcp) install the tarball attached to the fork's GitHub
-      # Release, a path pnpm-based CI never exercises. Installing the commit as
-      # an npm git dependency is no longer checked: npm 10.8.2 (Node 18 and 20)
-      # crashes in the nested devDependency install a git dependency triggers.
+      # Consumers (dav-mcp) install @philflow/tsdav from npm under an alias,
+      # `"tsdav": "npm:@philflow/tsdav@<version>"`, a path pnpm-based CI never
+      # exercises. The packed tarball is installed the same way, under the
+      # name `tsdav`, and imported as a consumer imports it.
       - name: Install as packed tarball
         run: |
           # --ignore-scripts: `prepare` is the git-hook installer, not a build.
           TARBALL="$GITHUB_WORKSPACE/$(npm pack --ignore-scripts | tail -1)"
           CONSUMER=$(mktemp -d)
-          npm init -y --prefix "$CONSUMER" > /dev/null
-          npm install --prefix "$CONSUMER" --no-audit --no-fund "$TARBALL"
           cd "$CONSUMER"
+          echo '{ "name": "consumer", "version": "0.0.0", "private": true }' > package.json
+          npm install --no-audit --no-fund "tsdav@file:$TARBALL"
           node --input-type=module -e "
             const m = await import('tsdav');
             if (typeof m.createDAVClient !== 'function' || typeof m.fetchTodos !== 'function') process.exit(1);
             console.log('✅ tarball installs and imports (ESM)');"
           node -e "
             const m = require('tsdav');
+            if (require('tsdav/package.json').name !== '@philflow/tsdav') process.exit(1);
             if (typeof m.createDAVClient !== 'function' || typeof m.fetchTodos !== 'function') process.exit(1);
             console.log('✅ tarball installs and imports (CJS)');"
 

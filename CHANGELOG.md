@@ -1,3 +1,21 @@
+## v2.4.0 (PhilflowIO fork)
+
+**Installing this fork.** The fork is on npm as `@philflow/tsdav`. Code that imports `tsdav` keeps its imports and installs the fork under an alias:
+
+```json
+"tsdav": "npm:@philflow/tsdav@2.4.0"
+```
+
+This replaces the GitHub Release tarball URL of v2.3.5+philflow.5 and .6. npm 12 refuses remote-tarball and git dependencies by default (`allow-remote=none`, `allow-git=none`), so a consumer pinning that URL no longer installs.
+
+No change to the library code; it is the code of v2.3.5+philflow.6 (upstream v2.3.5 plus the fork additions listed under v2.3.5+philflow.5).
+
+##### build
+- the package is named `@philflow/tsdav` and published to npm by the release workflow through npm trusted publishing (GitHub OIDC), with a provenance attestation and without a stored npm token
+- versions are plain semver on the fork's own line: npm drops `+build` metadata, so `2.3.5+philflow.N` could only publish as `2.3.5`. 2.4.0 is upstream 2.3.5 plus the fork's backward-compatible additions. Release tags are `philflow-v<version>`, so they cannot collide with upstream `v*` tags
+- the tarball contains `dist` only; `package.json`, `README.md` and `LICENSE` are added by npm
+- the release workflow installs the packed tarball on Node 18, 20, 22, 24 and 26 (the last with npm 12) before it publishes, and refuses a tag that does not match the name and version in `package.json`
+
 ## v2.3.5+philflow.6 (PhilflowIO fork)
 
 No change to the library code; `dist/` differs from v2.3.5+philflow.5 only in `dist/package.json`.
@@ -9,7 +27,7 @@ No change to the library code; `dist/` differs from v2.3.5+philflow.5 only in `d
 
 ## v2.3.5+philflow.5 (PhilflowIO fork)
 
-**Installing this fork.** The fork is not on npm. Each fork tag has a GitHub Release with the packed tarball attached; depend on that URL:
+**Installing this fork.** (Superseded by v2.4.0: the fork is on npm as `@philflow/tsdav`.) Each fork tag has a GitHub Release with the packed tarball attached; depend on that URL:
 
 ```json
 "tsdav": "https://github.com/PhilflowIO/tsdav/releases/download/v2.3.5%2Bphilflow.5/tsdav-2.3.5-philflow.5.tgz"
@@ -31,7 +49,7 @@ Upstream v2.3.5 merged into the fork. Fork-only additions on top of upstream:
 
 ##### build
 - the version is `2.3.5+philflow.N` (build metadata) rather than a `-philflow.N` prerelease, which sorts before 2.3.5 and fails peer ranges such as `tsdav@^2.0.0`
-- consumed as a release tarball: pushing a fork tag builds, packs and attaches `tsdav-2.3.5-philflow.N.tgz` to a GitHub Release, then installs that URL on Node 18, 20 and 22. The fork is never published to npm
+- consumed as a release tarball: pushing a fork tag builds, packs and attaches `tsdav-2.3.5-philflow.N.tgz` to a GitHub Release, then installs that URL on Node 18, 20 and 22. The fork is never published to npm (superseded by v2.4.0)
 - git-URL installs are unsupported on npm < 10.9: npm installs a git dependency's devDependencies to run `prepare`, and npm 10.8.2 crashes there
 - `dist/` stays committed; CI rebuilds it on every push and fails on any difference, and installs the packed tarball
 - `prepare` only installs git hooks and does not run for tarball installs; consumers never build on install

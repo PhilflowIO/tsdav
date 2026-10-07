@@ -1,7 +1,7 @@
 {
-  "name": "tsdav",
-  "version": "2.3.5+philflow.6",
-  "description": "WebDAV, CALDAV, and CARDDAV client for Nodejs and the Browser",
+  "name": "@philflow/tsdav",
+  "version": "2.4.0",
+  "description": "WebDAV, CalDAV and CardDAV client for Node.js and the browser (PhilflowIO fork of tsdav with VTODO, MKCOL address books and Digest auth)",
   "keywords": [
     "dav",
     "caldav",
@@ -22,7 +22,13 @@
     "typescript"
   ],
   "homepage": "https://tsdav.vercel.app/",
-  "repository": "https://github.com/PhilflowIO/tsdav",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PhilflowIO/tsdav.git"
+  },
+  "bugs": {
+    "url": "https://github.com/PhilflowIO/tsdav/issues"
+  },
   "license": "MIT",
   "author": "linlilulll@gmail.com",
   "exports": {
@@ -42,8 +48,7 @@
   "module": "dist/tsdav.mjs",
   "types": "dist/tsdav.d.ts",
   "files": [
-    "dist",
-    "package.json"
+    "dist"
   ],
   "scripts": {
     "build": "node scripts/clean-dist.cjs && tsc -p tsconfig.build.json --emitDeclarationOnly --declarationDir dist && rolldown -c rolldown.config.mjs && node scripts/finalize-dist.cjs",
@@ -87,5 +92,9 @@
   "packageManager": "pnpm@10.34.4",
   "engines": {
     "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   }
 }

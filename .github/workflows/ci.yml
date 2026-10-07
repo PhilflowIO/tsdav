@@ -7,6 +7,10 @@ on:
     types: ['opened', 'synchronize']
     branches: [master, main]
 
+# Read-only token unless a job asks for more; none of these jobs writes.
+permissions:
+  contents: read
+
 jobs:
   automated-test:
     runs-on: ubuntu-latest
@@ -88,8 +92,9 @@ jobs:
         run: |
           mkdir -p /tmp/tsdav-runtime/consumer
           cd /tmp/tsdav-runtime/consumer
-          npm init -y
-          npm install "$(find /tmp/tsdav-runtime -maxdepth 1 -name 'tsdav-*.tgz' -print -quit)" --no-audit --no-fund
+          echo '{ "name": "consumer", "version": "0.0.0", "private": true }' > package.json
+          # Installed under the name `tsdav`, the way consumers alias @philflow/tsdav.
+          npm install "tsdav@file:$(find /tmp/tsdav-runtime -maxdepth 1 -name 'philflow-tsdav-*.tgz' -print -quit)" --no-audit --no-fund
           node -e "const mod = require('tsdav'); if (typeof mod.DAVClient !== 'function') process.exit(1)"
           node --input-type=module -e "import { DAVClient } from 'tsdav'; if (typeof DAVClient !== 'function') process.exit(1)"
 
@@ -180,16 +185,16 @@ jobs:
           # copy with paths that are only valid from inside the repo root.
           mkdir -p /tmp/deno-smoke
           npm pack --pack-destination /tmp/deno-smoke > /tmp/pack.out
-          TARBALL=$(find /tmp/deno-smoke -maxdepth 1 -name 'tsdav-*.tgz' -print -quit)
+          TARBALL=$(find /tmp/deno-smoke -maxdepth 1 -name 'philflow-tsdav-*.tgz' -print -quit)
           echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
 
-      - name: 'Import tsdav under Deno via npm: specifier'
+      - name: 'Import @philflow/tsdav under Deno via npm: specifier'
         run: |
           # Build a throwaway consumer workspace that installs the packed
           # tarball into node_modules, then tell Deno to consume that
           # existing node_modules via `nodeModulesDir: "manual"`. Using
           # `--node-modules-dir=auto` here would make Deno resolve
-          # `npm:tsdav` against the public registry (ignoring our local
+          # `npm:@philflow/tsdav` against the public registry (ignoring our local
           # build), which defeats the whole point of the smoke test.
           mkdir -p /tmp/deno-smoke/consumer
           cd /tmp/deno-smoke/consumer
@@ -198,13 +203,13 @@ jobs:
             "name": "consumer",
             "private": true,
             "type": "module",
-            "dependencies": { "tsdav": "file:${{ steps.pack.outputs.tarball }}" }
+            "dependencies": { "@philflow/tsdav": "file:${{ steps.pack.outputs.tarball }}" }
           }
           EOF
           npm install --no-audit --no-fund --no-save --no-package-lock
           # Sanity-check: the installed package must be the freshly packed
           # version and must NOT drag in `cross-fetch`.
-          INSTALLED_VERSION=$(node -p "require('./node_modules/tsdav/package.json').version")
+          INSTALLED_VERSION=$(node -p "require('./node_modules/@philflow/tsdav/package.json').version")
           echo "installed tsdav version: $INSTALLED_VERSION"
           if [ -d node_modules/cross-fetch ]; then
             echo "cross-fetch unexpectedly present in node_modules"
@@ -216,7 +221,7 @@ jobs:
           }
           EOF
           cat > smoke.ts <<'EOF'
-          import { DAVClient, createDAVClient, DAVNamespace } from 'npm:tsdav';
+          import { DAVClient, createDAVClient, DAVNamespace } from 'npm:@philflow/tsdav';
           if (typeof DAVClient !== 'function') throw new Error('DAVClient missing');
           if (typeof createDAVClient !== 'function') throw new Error('createDAVClient missing');
           if (!DAVNamespace) throw new Error('DAVNamespace missing');

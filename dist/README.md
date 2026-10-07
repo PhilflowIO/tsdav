@@ -20,6 +20,14 @@ webdav request made easy
   </a>
 </p>
 
+> **PhilflowIO fork.** This repository is a fork of [natelindev/tsdav](https://github.com/natelindev/tsdav), published to npm as [`@philflow/tsdav`](https://www.npmjs.com/package/@philflow/tsdav). It adds a VTODO API, `makeAddressBook` and HTTP Digest authentication; see [CHANGELOG.md](https://github.com/PhilflowIO/tsdav/blob/main/CHANGELOG.md). Code that imports `tsdav` installs the fork under an alias and keeps its imports:
+>
+> ```bash
+> npm install tsdav@npm:@philflow/tsdav
+> ```
+>
+> The badges above describe upstream `tsdav`.
+
 ### Features
 
 - Easy to use, well documented JSON based WEBDAV API
