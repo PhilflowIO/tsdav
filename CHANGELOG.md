@@ -6,7 +6,7 @@
 "tsdav": "npm:@philflow/tsdav@2.4.0"
 ```
 
-This replaces the GitHub Release tarball URL of v2.3.5+philflow.5 and .6. npm 12 (Node 26) refuses remote-tarball and git dependencies by default (`allow-remote=none`, `allow-git=none`), so a consumer pinning that URL no longer installs.
+This replaces the GitHub Release tarball URL of v2.3.5+philflow.5 and .6. npm 12 refuses remote-tarball and git dependencies by default (`allow-remote=none`, `allow-git=none`), so a consumer pinning that URL no longer installs.
 
 No change to the library code; it is the code of v2.3.5+philflow.6 (upstream v2.3.5 plus the fork additions listed under v2.3.5+philflow.5).
 
@@ -14,7 +14,7 @@ No change to the library code; it is the code of v2.3.5+philflow.6 (upstream v2.
 - the package is named `@philflow/tsdav` and published to npm by the release workflow through npm trusted publishing (GitHub OIDC), with a provenance attestation and without a stored npm token
 - versions are plain semver on the fork's own line: npm drops `+build` metadata, so `2.3.5+philflow.N` could only publish as `2.3.5`. 2.4.0 is upstream 2.3.5 plus the fork's backward-compatible additions. Release tags are `philflow-v<version>`, so they cannot collide with upstream `v*` tags
 - the tarball contains `dist` only; `package.json`, `README.md` and `LICENSE` are added by npm
-- the release workflow installs the packed tarball on Node 18, 20, 22, 24 and 26 before it publishes, and refuses a tag that does not match the name and version in `package.json`
+- the release workflow installs the packed tarball on Node 18, 20, 22, 24 and 26 (the last with npm 12) before it publishes, and refuses a tag that does not match the name and version in `package.json`
 
 ## v2.3.5+philflow.6 (PhilflowIO fork)
 
