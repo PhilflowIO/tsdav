@@ -7,7 +7,7 @@ import {
   DAVPropStat,
   SyncCalendarsDetailedResult,
   SmartCollectionSyncDetailedResult,
-} from 'tsdav';
+} from '@philflow/tsdav';
 
 const client = new DAVClient({ serverUrl: 'https://example.com/', credentials: {} });
 const accountType: 'caldav' | 'carddav' = client.accountType;
