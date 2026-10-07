@@ -1,39 +1,48 @@
 name: fork-release
 
-# This fork is never published to npm: the registry name `tsdav` belongs to
-# upstream (natelindev/tsdav). A fork release is a GitHub Release carrying the
-# packed tarball, and consumers depend on that tarball's URL.
+# Publishes this fork to npm as @philflow/tsdav. The unscoped name `tsdav`
+# belongs to upstream (natelindev/tsdav); consumers that import `tsdav`
+# install the fork through an npm alias:
 #
-# Why a tarball and not `github:PhilflowIO/tsdav#<tag>`: for a git dependency
-# with a `prepare` script npm clones the repo and runs a nested install of the
-# devDependencies, and npm 10.8.2 (shipped with Node 18 and 20) crashes in that
-# nested install. A tarball is unpacked as-is; no scripts, no devDependencies.
+#   "tsdav": "npm:@philflow/tsdav@2.4.0"
 #
-# Order: build -> verify -> publish. The tarball travels between the jobs as a
-# workflow artifact, so the release only becomes public after the exact file
-# installed on every supported Node version. A draft release was the
-# alternative; it would need `contents: write` in the verify jobs (a draft and
-# its assets are invisible to a read-only token) and could still not be
-# installed the way a consumer installs, by plain URL.
+# Why the registry and not a tarball URL or git dependency: npm 12 (Node 26)
+# refuses both by default (`allow-remote=none`, `allow-git=none`), so a
+# consumer pinning either fails to install (PhilflowIO/dav-mcp#100).
 #
-# Re-running: use "Re-run failed jobs". That keeps the tarball the build job
-# already packed. A full re-run packs again on a toolchain that may have moved
-# (runner image, npm), and if the bytes differ from an already released asset
-# the publish job stops with "already released with different content". That
-# is the intended fail-safe, not an error to work around: bump the version.
+# Versions are plain semver on the fork's own line (2.4.0 = upstream 2.3.5
+# plus the fork's backward-compatible additions). npm drops `+build`
+# metadata, so the old `2.3.5+philflow.N` scheme cannot be published, and a
+# `-philflow.N` prerelease fails peer ranges such as `tsdav@^2.0.0`. Tags are
+# `philflow-v<version>`, so they can never collide with an upstream `v*` tag
+# fetched into this repository.
 #
-# Actions are pinned to commit SHAs: a tag can be moved, and the publish job
-# holds a token that can write to this repository.
+# Authentication is npm trusted publishing (GitHub OIDC): the publish job
+# requests a short-lived token for this workflow file; there is no npm token
+# in the repository secrets. npm then attaches a provenance attestation that
+# links the published version to this run and commit.
+#
+# Order: build -> verify -> publish to npm -> GitHub Release. The tarball
+# travels between jobs as an artifact, so npm receives the exact file that
+# installed on every supported Node version.
+#
+# Re-running: use "Re-run failed jobs"; that keeps the tarball the build job
+# already packed. A version already on npm is never replaced: same bytes ->
+# the publish step does nothing, different bytes -> it fails and asks for a
+# new version. npm does not allow re-publishing a version anyway.
+#
+# Actions are pinned to commit SHAs: a tag can be moved, and the later jobs
+# hold tokens that can publish.
 on:
   push:
     tags:
-      - 'v*philflow*'
+      - 'philflow-v*'
 
 permissions:
   contents: read
 
 # One run per tag at a time; a second push or a re-run waits instead of racing
-# the first one to `gh release create`.
+# the first one to the registry.
 concurrency:
   group: fork-release-${{ github.ref }}
   cancel-in-progress: false
@@ -64,6 +73,32 @@ jobs:
           fi
           echo "✅ $GITHUB_SHA is on main"
 
+      # The tag is what a release is cut from and the version is what
+      # consumers pin; they have to name the same thing. npm would silently
+      # drop `+build` metadata, so a version carrying it is refused here
+      # instead of being published under a shorter, different version.
+      - name: Check tag matches package.json name and version
+        id: version
+        run: |
+          NAME=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          if [ "$NAME" != "@philflow/tsdav" ]; then
+            echo "❌ ERROR: package.json name is $NAME, expected @philflow/tsdav"
+            exit 1
+          fi
+          case "$VERSION" in
+            *+*)
+              echo "❌ ERROR: version $VERSION carries build metadata; npm would publish it as ${VERSION%%+*}"
+              exit 1
+              ;;
+          esac
+          if [ "$GITHUB_REF_NAME" != "philflow-v$VERSION" ]; then
+            echo "❌ ERROR: tag $GITHUB_REF_NAME does not match package.json version $VERSION (expected philflow-v$VERSION)"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "✅ Tag $GITHUB_REF_NAME matches $NAME@$VERSION"
+
       # pnpm version comes from package.json `packageManager`.
       - name: Setup pnpm
         uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
@@ -78,19 +113,6 @@ jobs:
       - name: Install dependencies
         run: pnpm i --frozen-lockfile
 
-      # The tag is the only thing a consumer pins, so it has to name the
-      # version that is inside the tarball.
-      - name: Check tag matches package.json version
-        id: version
-        run: |
-          VERSION=$(node -p "require('./package.json').version")
-          if [ "$GITHUB_REF_NAME" != "v$VERSION" ]; then
-            echo "❌ ERROR: tag $GITHUB_REF_NAME does not match package.json version $VERSION (expected v$VERSION)"
-            exit 1
-          fi
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "✅ Tag $GITHUB_REF_NAME matches version $VERSION"
-
       - name: Check types
         run: pnpm typecheck
 
@@ -100,6 +122,9 @@ jobs:
       # Unit tests only: the integration suites need provider credentials.
       - name: Unit tests
         run: pnpm test:unit
+
+      - name: Check the public types compile for a consumer
+        run: pnpm test:consumer
 
       - name: Build
         run: pnpm build
@@ -116,11 +141,7 @@ jobs:
           fi
           echo "✅ dist matches a fresh build from src"
 
-      # npm names the file tsdav-<version>.tgz, and the version carries a `+`
-      # (build metadata). GitHub rewrites characters it does not accept in
-      # asset names, so the `+` is replaced here, where it is visible, instead
-      # of by the upload. Only the file name changes; the version inside the
-      # tarball stays 2.3.5+philflow.N.
+      # npm names a scoped tarball <scope>-<name>-<version>.tgz.
       - name: Pack
         id: pack
         env:
@@ -128,10 +149,15 @@ jobs:
         run: |
           # --ignore-scripts: `prepare` is the git-hook installer, not a build.
           npm pack --ignore-scripts
-          ASSET="tsdav-$(echo "$VERSION" | tr '+' '-').tgz"
+          ASSET="philflow-tsdav-$VERSION.tgz"
           mkdir -p "$RUNNER_TEMP/release"
-          mv "tsdav-$VERSION.tgz" "$RUNNER_TEMP/release/$ASSET"
+          mv "$ASSET" "$RUNNER_TEMP/release/$ASSET"
           tar -tzf "$RUNNER_TEMP/release/$ASSET"
+          # The bundles are what consumers run; a tarball without them would
+          # install and then fail on import.
+          for f in package/dist/tsdav.mjs package/dist/tsdav.cjs.js package/dist/tsdav.d.ts; do
+            tar -tzf "$RUNNER_TEMP/release/$ASSET" | grep -qx "$f" || { echo "❌ ERROR: $f missing from $ASSET"; exit 1; }
+          done
           SHA256=$(sha256sum "$RUNNER_TEMP/release/$ASSET" | cut -d' ' -f1)
           echo "asset=$ASSET" >> "$GITHUB_OUTPUT"
           echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
@@ -153,8 +179,8 @@ jobs:
             exit 1
           fi
 
-      # The one file every later job uses: verify installs it, publish
-      # attaches it. Nothing is rebuilt or repacked after this point.
+      # The one file every later job uses: verify installs it, publish sends
+      # it to npm. Nothing is rebuilt or repacked after this point.
       - name: Hand the tarball to the next jobs
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -164,7 +190,7 @@ jobs:
           retention-days: 7
 
   # Installs the file consumers will install, on the Node versions they run,
-  # before it is public. A failure here leaves no release behind.
+  # before it is public. A failure here publishes nothing.
   verify:
     name: Install packed tarball (Node ${{ matrix.node-version }})
     needs: build
@@ -174,10 +200,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node-version: [18, 20, 22]
+        node-version: [18, 20, 22, 24, 26]
 
     steps:
-      # No checkout: a consumer has nothing but the tarball.
+      # No checkout: a consumer has nothing but the package.
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
@@ -189,6 +215,8 @@ jobs:
           name: release
           path: release
 
+      # Installed under the name `tsdav`, the way consumers alias it, so the
+      # imports below are the ones a consumer writes.
       - name: Install the tarball
         env:
           ASSET: ${{ needs.build.outputs.asset }}
@@ -197,8 +225,8 @@ jobs:
           node --version && npm --version
           echo "$SHA256  release/$ASSET" | sha256sum --check
           mkdir consumer && cd consumer
-          npm init -y > /dev/null
-          npm install --no-audit --no-fund "../release/$ASSET"
+          echo '{ "name": "consumer", "version": "0.0.0", "private": true }' > package.json
+          npm install --no-audit --no-fund "tsdav@file:../release/$ASSET"
           # the lockfile path, which is what consumer CI runs
           rm -rf node_modules
           npm ci --no-audit --no-fund
@@ -213,17 +241,111 @@ jobs:
             if (typeof m.createDAVClient !== 'function' || typeof m.fetchTodos !== 'function') process.exit(1);
             console.log('✅ ESM import');"
           node -e "
-            const v = require('tsdav/package.json').version;
-            if (v !== process.env.VERSION) { console.error('wrong version', v); process.exit(1); }
+            const p = require('tsdav/package.json');
+            if (p.name !== '@philflow/tsdav' || p.version !== process.env.VERSION) { console.error('wrong package', p.name, p.version); process.exit(1); }
             const m = require('tsdav');
             if (typeof m.createDAVClient !== 'function' || typeof m.fetchTodos !== 'function') process.exit(1);
-            console.log('✅ CJS require, version', v);"
+            console.log('✅ CJS require', p.name, p.version);"
 
-  # The only job with a token that can write. It runs no code from the
-  # repository and installs no dependencies: it attaches the verified file.
-  publish:
-    name: Publish GitHub Release
+  # The only job that can publish to npm. It runs no code from the repository
+  # and installs no dependencies: it sends the verified file.
+  publish-npm:
+    name: Publish to npm
     needs: [build, verify]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # OIDC token for npm trusted publishing and provenance
+
+    env:
+      ASSET: ${{ needs.build.outputs.asset }}
+      SHA256: ${{ needs.build.outputs.sha256 }}
+      VERSION: ${{ needs.build.outputs.version }}
+
+    steps:
+      # Trusted publishing needs npm >= 11.5.1; Node 26 ships npm 12.
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 26
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Fetch the tarball
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release
+          path: release
+
+      - name: Check the tarball is the one that was verified
+        run: |
+          npm --version
+          echo "$SHA256  release/$ASSET" | sha256sum --check
+
+      # Safe to run again for a version that is already on npm: same bytes ->
+      # nothing to do, different bytes -> fail and ask for a new version.
+      # The registry is asked anonymously over its JSON API, so the answer
+      # does not depend on the token setup-node writes into .npmrc.
+      - name: Publish with provenance
+        run: |
+          LOCAL="sha512-$(openssl dgst -sha512 -binary "release/$ASSET" | base64 -w0)"
+          URL="https://registry.npmjs.org/@philflow/tsdav/$VERSION"
+          STATUS=$(curl --silent --show-error --output "$RUNNER_TEMP/existing.json" --write-out '%{http_code}' "$URL")
+          case "$STATUS" in
+            404)
+              echo "ℹ️  @philflow/tsdav@$VERSION is not on npm yet"
+              ;;
+            200)
+              PUBLISHED=$(jq -r '.dist.integrity' "$RUNNER_TEMP/existing.json")
+              if [ "$PUBLISHED" = "$LOCAL" ]; then
+                echo "✅ @philflow/tsdav@$VERSION is already published with these bytes"
+                exit 0
+              fi
+              echo "❌ ERROR: @philflow/tsdav@$VERSION is already published with different content"
+              echo "   published: $PUBLISHED"
+              echo "   this run:  $LOCAL"
+              echo "   A published version is never replaced. Bump the version and tag again."
+              exit 1
+              ;;
+            *)
+              echo "❌ ERROR: registry answered $STATUS for $URL"
+              exit 1
+              ;;
+          esac
+          npm publish "release/$ASSET" --provenance --access public
+
+      # The registry answers from a cache that can lag behind the publish;
+      # poll until it serves the bytes this run verified.
+      - name: Check the registry serves the verified tarball
+        run: |
+          LOCAL="sha512-$(openssl dgst -sha512 -binary "release/$ASSET" | base64 -w0)"
+          URL="https://registry.npmjs.org/@philflow/tsdav/$VERSION"
+          for _ in $(seq 1 12); do
+            PUBLISHED=$(curl --silent --fail "$URL" | jq -r '.dist.integrity' || true)
+            if [ "$PUBLISHED" = "$LOCAL" ]; then
+              echo "✅ registry serves @philflow/tsdav@$VERSION ($LOCAL)"
+              {
+                echo "### @philflow/tsdav@$VERSION"
+                echo ""
+                echo "Pin this in the consumer's package.json:"
+                echo ""
+                echo '```json'
+                echo "\"tsdav\": \"npm:@philflow/tsdav@$VERSION\""
+                echo '```'
+              } >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "❌ ERROR: registry does not serve the verified tarball for @philflow/tsdav@$VERSION"
+          echo "   served:   ${PUBLISHED:-nothing}"
+          echo "   verified: $LOCAL"
+          exit 1
+
+  # Release notes and the tarball on GitHub, after npm has the version. Kept
+  # separate so the npm job never holds a token that writes to the repo.
+  github-release:
+    name: Publish GitHub Release
+    needs: [build, publish-npm]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -245,12 +367,9 @@ jobs:
       - name: Check the tarball is the one that was verified
         run: echo "$SHA256  release/$ASSET" | sha256sum --check
 
-      # Safe to run again for a tag that is already released ("Re-run failed
-      # jobs"; see the header for a full re-run). An existing
-      # asset is never replaced: consumers' lockfiles carry its hash, so
-      # swapping the bytes under the same URL would break their `npm ci`.
-      # Same bytes -> nothing to do; different bytes -> fail and ask for a
-      # new version.
+      # A published release is left as it is: its title and notes may have
+      # been edited by hand. Only a draft is completed, and a missing asset
+      # attached.
       - name: Create or complete the GitHub Release
         run: |
           if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
@@ -261,21 +380,7 @@ jobs:
             if [ "$HAS_ASSET" = "0" ]; then
               gh release upload "$GITHUB_REF_NAME" "release/$ASSET"
               echo "✅ Attached the missing asset $ASSET"
-            else
-              mkdir -p "$RUNNER_TEMP/existing"
-              gh release download "$GITHUB_REF_NAME" --pattern "$ASSET" --dir "$RUNNER_TEMP/existing"
-              EXISTING=$(sha256sum "$RUNNER_TEMP/existing/$ASSET" | cut -d' ' -f1)
-              if [ "$EXISTING" != "$SHA256" ]; then
-                echo "❌ ERROR: $ASSET is already released with different content"
-                echo "   released: $EXISTING"
-                echo "   this run: $SHA256"
-                echo "   A released tarball is not replaced. Bump the version and tag again."
-                exit 1
-              fi
-              echo "✅ $ASSET is already attached and identical"
             fi
-            # A published release is left as it is: its title and notes may
-            # have been edited by hand. Only a draft is completed.
             IS_DRAFT=$(gh release view "$GITHUB_REF_NAME" --json isDraft | jq -r '.isDraft')
             if [ "$IS_DRAFT" = "true" ]; then
               gh release edit "$GITHUB_REF_NAME" \
@@ -290,35 +395,3 @@ jobs:
               --title "$GITHUB_REF_NAME" \
               --notes-file release/notes.md
           fi
-
-      # Ask GitHub for the URL instead of composing it: the tag has a `+` in
-      # it and this is the exact string consumers pin. Then fetch that URL
-      # without a token, as a consumer does, and compare it with the file the
-      # install jobs tested.
-      - name: Check the public download
-        run: |
-          ASSET_URL=$(gh release view "$GITHUB_REF_NAME" --json assets \
-            | jq -r --arg name "$ASSET" '.assets[] | select(.name == $name) | .url')
-          if [ -z "$ASSET_URL" ]; then
-            echo "❌ ERROR: release has no asset $ASSET"
-            exit 1
-          fi
-          curl --fail --silent --show-error --location --retry 5 --retry-all-errors \
-            --output "$RUNNER_TEMP/published.tgz" "$ASSET_URL"
-          PUBLISHED=$(sha256sum "$RUNNER_TEMP/published.tgz" | cut -d' ' -f1)
-          if [ "$PUBLISHED" != "$SHA256" ]; then
-            echo "❌ ERROR: $ASSET_URL does not serve the verified tarball"
-            echo "   served:   $PUBLISHED"
-            echo "   verified: $SHA256"
-            exit 1
-          fi
-          echo "📦 Asset download URL: $ASSET_URL"
-          {
-            echo "### $GITHUB_REF_NAME"
-            echo ""
-            echo "Pin this in the consumer's package.json:"
-            echo ""
-            echo '```json'
-            echo "\"tsdav\": \"$ASSET_URL\""
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
