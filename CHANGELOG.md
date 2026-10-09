@@ -1,7 +1,8 @@
 ## Unreleased (PhilflowIO fork)
 
 ##### features
-- `DAVAuthenticationError` (with `isDAVAuthenticationError`), a subclass of `Error` with `code` `'TSDAV_AUTHENTICATION_FAILED'`, `status` and `url`. `fetchPrincipalUrl` (and so `createAccount` and every client login) throws it on a `401`, an OAuth client when the token endpoint refuses the grant with a `4xx`. The messages are unchanged (PhilflowIO/tsdav#42)
+- `DAVResponseError` (with `isDAVResponseError`): a subclass of `Error` with `code` `'TSDAV_RESPONSE_ERROR'`, `status` and `url`, thrown where a request is answered with an error status — discovery (`assertDAVResponses`, `assertDAVProperty`, `fetchPrincipalUrl`, `fetchHomeUrl`), `collectionQuery`, `isCollectionDirty` and the OAuth token request. Messages are unchanged (PhilflowIO/tsdav#42)
+- `DAVAuthenticationError` (with `isDAVAuthenticationError`), a `DAVResponseError` with `code` `'TSDAV_AUTHENTICATION_FAILED'`, for every one of those answered with `401`, and for an OAuth token endpoint refusing the grant with `400` or `401` (RFC 6749 5.2); a token endpoint answering anything else is a `DAVResponseError` with its status
 - `getOauthHeaders` adds `failure: { status, url }` to its result when the token endpoint answers with an error status; the other fields are unchanged
 
 ##### fixes

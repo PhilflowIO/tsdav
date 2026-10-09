@@ -590,10 +590,47 @@ const diffDAVObjects = (local, remote, baseUrl, incremental = false, deletedObje
 	};
 };
 //#endregion
+//#region src/util/authError.ts
+/**
+* Thrown when a DAV request, or an OAuth token request, is answered with an
+* error status. `status` and `url` say who answered what, so callers can tell
+* a missing collection from a refused one or a server failure without reading
+* the message.
+*/
+var DAVResponseError = class extends Error {
+	constructor(message, params) {
+		super(message);
+		this.code = "TSDAV_RESPONSE_ERROR";
+		this.name = "DAVResponseError";
+		this.status = params.status;
+		this.url = params.url;
+	}
+};
+/**
+* Thrown when a server refuses the credentials: a DAV request answered with
+* 401, or an OAuth token endpoint refusing the grant (400 or 401, RFC 6749
+* 5.2). A DAVResponseError like any other error status, with its own code.
+*/
+var DAVAuthenticationError = class extends DAVResponseError {
+	constructor(message, params) {
+		super(message, params);
+		this.code = "TSDAV_AUTHENTICATION_FAILED";
+		this.name = "DAVAuthenticationError";
+	}
+};
+const codeOf = (err) => err?.code;
+const isDAVAuthenticationError = (err) => err instanceof DAVAuthenticationError || codeOf(err) === "TSDAV_AUTHENTICATION_FAILED";
+const isDAVResponseError = (err) => err instanceof DAVResponseError || codeOf(err) === "TSDAV_RESPONSE_ERROR" || isDAVAuthenticationError(err);
+/** The error for a DAV response with an error status: 401 is a refused login. */
+const davResponseError = (message, params) => params.status === 401 ? new DAVAuthenticationError(message, params) : new DAVResponseError(message, params);
+//#endregion
 //#region src/util/responseHelpers.ts
 const assertDAVResponses = (responses, context) => {
 	const failed = responses.find((response) => !response.ok || response.status >= 400);
-	if (failed) throw new Error(`${context}: ${failed.status} ${failed.statusText}`);
+	if (failed) throw davResponseError(`${context}: ${failed.status} ${failed.statusText}`, {
+		status: failed.status,
+		url: failed.href ?? ""
+	});
 };
 const assertDAVDiscovery = (responses, context) => {
 	assertDAVResponses(responses, context);
@@ -605,7 +642,10 @@ const assertDAVDiscovery = (responses, context) => {
 };
 const assertDAVProperty = (response, name, context) => {
 	const failed = response.propStats?.find((stat) => !stat.ok && hasOwn(stat.props, name));
-	if (failed && !hasOwn(response.props ?? {}, name)) throw new Error(`${context}: ${name} returned ${failed.status} ${failed.statusText}`);
+	if (failed && !hasOwn(response.props ?? {}, name)) throw davResponseError(`${context}: ${name} returned ${failed.status} ${failed.statusText}`, {
+		status: failed.status,
+		url: response.href ?? ""
+	});
 };
 const assertDAVObjectResponses = (responses, property, objectUrls, baseUrl, context) => {
 	assertDAVResponses(responses, context);
@@ -666,7 +706,10 @@ const collectionQuery = async (params) => {
 	const emptyNotFound = queryResults[0];
 	if (defaultNamespace === "c" && body?.["calendar-query"] != null && queryResults.length === 1 && emptyNotFound && emptyNotFound.status === 404 && urlMatches(url, emptyNotFound.href, url) && !emptyNotFound.error && Object.keys(emptyNotFound.props ?? {}).length === 0 && typeof emptyNotFound.raw === "object" && emptyNotFound.raw !== null && emptyNotFound.raw.multistatus?.response?.propstat == null) return [];
 	const errorResponse = queryResults.find((res) => !res.ok || res.status && res.status >= 400);
-	if (errorResponse) throw new Error(`Collection query failed: ${errorResponse.status} ${errorResponse.statusText}. ${typeof errorResponse.raw === "string" ? `Raw response: ${errorResponse.raw.slice(0, 4096)}` : ""}`);
+	if (errorResponse) throw davResponseError(`Collection query failed: ${errorResponse.status} ${errorResponse.statusText}. ${typeof errorResponse.raw === "string" ? `Raw response: ${errorResponse.raw.slice(0, 4096)}` : ""}`, {
+		status: errorResponse.status,
+		url: errorResponse.href ?? url
+	});
 	if ((body?.["calendar-query"] || body?.["calendar-multiget"] || body?.["addressbook-query"] || body?.["addressbook-multiget"]) && queryResults.some((response) => !response.raw?.multistatus)) throw new Error("Collection query failed: expected a DAV multistatus response");
 	if ((body?.["calendar-query"] || body?.["calendar-multiget"] || body?.["addressbook-query"] || body?.["addressbook-multiget"]) && queryResults.some((response) => response.raw?.multistatus?.response && (typeof response.href !== "string" || !response.href))) throw new Error("Collection query failed: missing href in DAV response");
 	const firstQueryResult = queryResults[0];
@@ -727,7 +770,10 @@ const isCollectionDirty = async (params) => {
 	})).find((r) => urlMatches(collection.url, r.href, collection.url));
 	if (!res) throw new Error("Collection does not exist on server");
 	const unavailableCtag = res.propStats?.length && res.propStats.every((stat) => stat.status === 404 && hasOwn(stat.props, "getctag"));
-	if (!res.ok && !unavailableCtag) throw new Error(`Collection status check failed: ${res.status} ${res.statusText}`);
+	if (!res.ok && !unavailableCtag) throw davResponseError(`Collection status check failed: ${res.status} ${res.statusText}`, {
+		status: res.status,
+		url: res.href ?? collection.url
+	});
 	const remoteCtag = getDAVText(res.props?.getctag);
 	return {
 		isDirty: collection.ctag == null || remoteCtag == null || `${collection.ctag}` !== `${remoteCtag}`,
@@ -1902,24 +1948,6 @@ const createDigestFetch = (params) => {
 	};
 };
 //#endregion
-//#region src/util/authError.ts
-/**
-* Thrown when a server refuses the credentials: a DAV request answered with
-* 401, or an OAuth token endpoint refusing the grant (4xx). `status` and `url`
-* say who refused, so callers can tell a wrong password from a server that is
-* down or is not a DAV server without reading the message.
-*/
-var DAVAuthenticationError = class extends Error {
-	constructor(message, params) {
-		super(message);
-		this.code = "TSDAV_AUTHENTICATION_FAILED";
-		this.name = "DAVAuthenticationError";
-		this.status = params.status;
-		this.url = params.url;
-	}
-};
-const isDAVAuthenticationError = (err) => err instanceof DAVAuthenticationError || err?.code === "TSDAV_AUTHENTICATION_FAILED";
-//#endregion
 //#region src/account.ts
 var account_exports = /* @__PURE__ */ __exportAll({
 	createAccount: () => createAccount,
@@ -2026,6 +2054,10 @@ const fetchPrincipalUrl = async (params) => {
 			status: 401,
 			url: account.rootUrl
 		});
+		if (typeof response?.status === "number") throw davResponseError("cannot find principalUrl", {
+			status: response.status,
+			url: account.rootUrl
+		});
 		throw new Error("cannot find principalUrl");
 	}
 	const principalHref = extractHref(response.props?.currentUserPrincipal?.href);
@@ -2053,6 +2085,10 @@ const fetchHomeUrl = async (params) => {
 	const matched = responses.find((r) => urlMatches(account.principalUrl, r.href, account.rootUrl));
 	if (!matched || !matched.ok) {
 		debug$2(`Fetch home url failed with status ${matched?.statusText} and error ${JSON.stringify(responses.map((r) => r.error))}`);
+		if (matched && typeof matched.status === "number") throw davResponseError("cannot find homeUrl", {
+			status: matched.status,
+			url: account.principalUrl
+		});
 		throw new Error("cannot find homeUrl");
 	}
 	const homeHref = extractHref(account.accountType === "caldav" ? matched.props?.calendarHomeSet?.href : matched.props?.addressbookHomeSet?.href);
@@ -2475,7 +2511,8 @@ const resolveAuthHeaders = async (client, fetchOptions = client.fetchOptions, fe
 			const { headers, failure } = await getOauthHeaders(client.credentials, fetchOptions, fetchOverride);
 			if (!headers.authorization) {
 				const message = "OAuth authentication failed: token endpoint returned no access token";
-				if (failure && failure.status >= 400 && failure.status < 500) throw new DAVAuthenticationError(message, failure);
+				if (failure?.status === 400 || failure?.status === 401) throw new DAVAuthenticationError(message, failure);
+				if (failure) throw new DAVResponseError(message, failure);
 				throw new Error(message);
 			}
 			return headers;
@@ -2793,4 +2830,4 @@ var src_default = {
 	...requestHelpers_exports
 };
 //#endregion
-export { DAVAttributeMap, DAVAuthenticationError, DAVClient, DAVNamespace, DAVNamespaceShort, DigestUnsupportedError, ICALObjects, addressBookMultiGet, addressBookQuery, calendarMultiGet, calendarQuery, cleanupFalsy, collectionQuery, createAccount, createCalendarObject, createDAVClient, createDigestFetch, createObject, createTodo, createVCard, davRequest, src_default as default, deleteCalendarObject, deleteObject, deleteTodo, deleteVCard, ensureTrailingSlash, excludeHeaders, fetchAddressBooks, fetchCalendarObjects, fetchCalendarUserAddresses, fetchCalendars, fetchHomeUrl, fetchOauthTokens, fetchPrincipalUrl, fetchTodos, fetchVCards, freeBusyQuery, getBasicAuthHeaders, getBearerAuthHeaders, getDAVAttribute, getOauthHeaders, isCollectionDirty, isDAVAuthenticationError, isDigestUnsupportedError, makeAddressBook, makeCalendar, makeCollection, mergeHeaders, propfind, refreshAccessToken, serviceDiscovery, smartCollectionSync, smartCollectionSyncDetailed, supportedReportSet, syncCalendars, syncCalendarsDetailed, syncCollection, todoMultiGet, todoQuery, updateCalendarObject, updateObject, updateTodo, updateVCard, urlContains, urlEquals, urlMatches };
+export { DAVAttributeMap, DAVAuthenticationError, DAVClient, DAVNamespace, DAVNamespaceShort, DAVResponseError, DigestUnsupportedError, ICALObjects, addressBookMultiGet, addressBookQuery, calendarMultiGet, calendarQuery, cleanupFalsy, collectionQuery, createAccount, createCalendarObject, createDAVClient, createDigestFetch, createObject, createTodo, createVCard, davRequest, src_default as default, deleteCalendarObject, deleteObject, deleteTodo, deleteVCard, ensureTrailingSlash, excludeHeaders, fetchAddressBooks, fetchCalendarObjects, fetchCalendarUserAddresses, fetchCalendars, fetchHomeUrl, fetchOauthTokens, fetchPrincipalUrl, fetchTodos, fetchVCards, freeBusyQuery, getBasicAuthHeaders, getBearerAuthHeaders, getDAVAttribute, getOauthHeaders, isCollectionDirty, isDAVAuthenticationError, isDAVResponseError, isDigestUnsupportedError, makeAddressBook, makeCalendar, makeCollection, mergeHeaders, propfind, refreshAccessToken, serviceDiscovery, smartCollectionSync, smartCollectionSyncDetailed, supportedReportSet, syncCalendars, syncCalendarsDetailed, syncCollection, todoMultiGet, todoQuery, updateCalendarObject, updateObject, updateTodo, updateVCard, urlContains, urlEquals, urlMatches };

@@ -12,7 +12,7 @@ export { calendarQuery, calendarMultiGet, makeCalendar, fetchCalendars, fetchCal
 export { addressBookQuery, addressBookMultiGet, fetchAddressBooks, fetchVCards, createVCard, updateVCard, deleteVCard, makeAddressBook, } from './addressBook';
 export { todoQuery, todoMultiGet, fetchTodos, createTodo, updateTodo, deleteTodo } from './todo';
 export { getBasicAuthHeaders, getBearerAuthHeaders, getOauthHeaders, fetchOauthTokens, refreshAccessToken, } from './util/authHelpers';
-export { DAVAuthenticationError, isDAVAuthenticationError } from './util/authError';
+export { DAVAuthenticationError, DAVResponseError, isDAVAuthenticationError, isDAVResponseError, } from './util/authError';
 export { createDigestFetch, DigestUnsupportedError, isDigestUnsupportedError, } from './util/digestAuth';
 export { urlContains, urlEquals, urlMatches, ensureTrailingSlash, getDAVAttribute, cleanupFalsy, excludeHeaders, mergeHeaders, } from './util/requestHelpers';
 export { DAVNamespace, DAVAttributeMap, DAVNamespaceShort, ICALObjects } from './consts';

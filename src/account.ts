@@ -6,7 +6,11 @@ import { DAVNamespaceShort } from './consts';
 import { propfind } from './request';
 import { DAVAccount } from './types/models';
 import { isDigestUnsupportedError } from './util/digestAuth';
-import { DAVAuthenticationError, isDAVAuthenticationError } from './util/authError';
+import {
+  DAVAuthenticationError,
+  davResponseError,
+  isDAVAuthenticationError,
+} from './util/authError';
 import { fetch } from './util/fetch';
 import {
   excludeHeaders,
@@ -168,6 +172,12 @@ export const fetchPrincipalUrl = async (params: {
         { status: 401, url: account.rootUrl },
       );
     }
+    if (typeof response?.status === 'number') {
+      throw davResponseError('cannot find principalUrl', {
+        status: response.status,
+        url: account.rootUrl,
+      });
+    }
     throw new Error('cannot find principalUrl');
   }
 
@@ -215,6 +225,12 @@ export const fetchHomeUrl = async (params: {
     debug(
       `Fetch home url failed with status ${matched?.statusText} and error ${JSON.stringify(responses.map((r) => r.error))}`,
     );
+    if (matched && typeof matched.status === 'number') {
+      throw davResponseError('cannot find homeUrl', {
+        status: matched.status,
+        url: account.principalUrl,
+      });
+    }
     throw new Error('cannot find homeUrl');
   }
 

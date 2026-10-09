@@ -72,7 +72,7 @@ import {
 import { createDigestAuthState, createDigestFetch, DigestAuthState } from './util/digestAuth';
 import { Optional } from './util/typeHelpers';
 import { mergeHeaders } from './util/requestHelpers';
-import { DAVAuthenticationError } from './util/authError';
+import { DAVAuthenticationError, DAVResponseError } from './util/authError';
 
 const resolveAuthHeaders = async (
   client: DAVClient,
@@ -93,9 +93,12 @@ const resolveAuthHeaders = async (
       if (!headers.authorization) {
         const message = 'OAuth authentication failed: token endpoint returned no access token';
         // RFC 6749 5.2: the endpoint refuses a grant or client with 400 or 401.
-        if (failure && failure.status >= 400 && failure.status < 500) {
+        // Any other status (429, a wrong token URL, a server failure) is not
+        // a refusal of the credentials, but keeps its status.
+        if (failure?.status === 400 || failure?.status === 401) {
           throw new DAVAuthenticationError(message, failure);
         }
+        if (failure) throw new DAVResponseError(message, failure);
         throw new Error(message);
       }
       return headers;
