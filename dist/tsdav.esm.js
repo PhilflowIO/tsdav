@@ -1310,13 +1310,11 @@ const fetchCalendars = async (params) => {
 		const components = extractComponentNames(rc.props?.supportedCalendarComponentSet?.comp);
 		return components.length === 0 || components.some((c) => Object.values(ICALObjects).includes(c));
 	}).map((rs) => {
-		const description = rs.props?.calendarDescription;
-		const timezone = rs.props?.calendarTimezone;
 		const compSet = rs.props?.supportedCalendarComponentSet?.comp;
 		const projectedEntries = Object.entries(rs.props ?? {}).filter(([key]) => projectedProps?.[key]);
 		return {
-			description: typeof description === "string" ? description : "",
-			timezone: typeof timezone === "string" ? timezone : "",
+			description: getDAVText(rs.props?.calendarDescription) ?? "",
+			timezone: getDAVText(rs.props?.calendarTimezone) ?? "",
 			url: new URL(rs.href ?? "", ensureTrailingSlash(account.rootUrl ?? "")).href,
 			ctag: getDAVText(rs.props?.getctag),
 			calendarColor: rs.props?.calendarColor,

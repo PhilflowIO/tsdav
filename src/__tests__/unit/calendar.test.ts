@@ -453,6 +453,77 @@ describe('fetchCalendars', () => {
     expect(result).toHaveLength(2);
     expect(result.map((c) => c.displayName)).toEqual(['Empty Prop', 'Missing Prop']);
   });
+
+  describe('timezone and description', () => {
+    const vtimezone = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'BEGIN:VTIMEZONE',
+      'TZID:Europe/Berlin',
+      'END:VTIMEZONE',
+      'END:VCALENDAR',
+    ].join('\r\n');
+
+    const fetchWithProps = async (props: Record<string, unknown>) => {
+      mockedPropfind.mockResolvedValue([
+        {
+          href: '/cal/personal/',
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          props: {
+            displayname: 'Personal',
+            resourcetype: { calendar: {}, collection: {} },
+            supportedCalendarComponentSet: { comp: { _attributes: { name: 'VEVENT' } } },
+            ...props,
+          },
+        },
+      ]);
+      mockedSupportedReportSet.mockResolvedValue([]);
+      const [calendar] = await fetchCalendars({
+        account: {
+          serverUrl: 'https://example.com/',
+          homeUrl: 'https://example.com/cal/',
+          rootUrl: 'https://example.com/',
+          accountType: 'caldav',
+        },
+      });
+      return calendar;
+    };
+
+    it('keeps plain-text values', async () => {
+      const calendar = await fetchWithProps({
+        calendarTimezone: vtimezone,
+        calendarDescription: 'Work calendar',
+      });
+      expect(calendar.timezone).toBe(vtimezone);
+      expect(calendar.description).toBe('Work calendar');
+    });
+
+    it('reads values sent as CDATA', async () => {
+      const calendar = await fetchWithProps({
+        calendarTimezone: { _cdata: vtimezone },
+        calendarDescription: { _cdata: 'Work <b>calendar</b>' },
+      });
+      expect(calendar.timezone).toBe(vtimezone);
+      expect(calendar.description).toBe('Work <b>calendar</b>');
+    });
+
+    it('reads values parsed as _text nodes', async () => {
+      const calendar = await fetchWithProps({
+        calendarTimezone: { _text: vtimezone },
+        calendarDescription: { _text: 'Work calendar' },
+      });
+      expect(calendar.timezone).toBe(vtimezone);
+      expect(calendar.description).toBe('Work calendar');
+    });
+
+    it('returns empty strings when the properties are missing or empty', async () => {
+      const calendar = await fetchWithProps({ calendarTimezone: {} });
+      expect(calendar.timezone).toBe('');
+      expect(calendar.description).toBe('');
+    });
+  });
 });
 
 describe('fetchCalendarUserAddresses', () => {
