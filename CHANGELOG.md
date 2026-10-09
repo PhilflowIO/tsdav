@@ -1,4 +1,4 @@
-## Unreleased (PhilflowIO fork)
+## v2.5.0 (PhilflowIO fork)
 
 ##### features
 - `DAVResponseError` (with `isDAVResponseError`): a subclass of `Error` with `code` `'TSDAV_RESPONSE_ERROR'`, `status` and `url`, thrown where a request is answered with an error status — discovery (`assertDAVResponses`, `assertDAVProperty`, `fetchPrincipalUrl`, `fetchHomeUrl`, `fetchCalendarUserAddresses`), `collectionQuery`, `isCollectionDirty`, `smartCollectionSync` and the OAuth token request. Messages are unchanged (PhilflowIO/tsdav#42)
@@ -7,6 +7,7 @@
 
 ##### fixes
 - `createAccount` keeps a credentials error across root-URL candidates by its type instead of its message prefix
+- `fetchCalendars` reads `description` and `timezone` through `getDAVText`, so a value sent as CDATA is kept instead of becoming an empty string, as `displayName` already was (PhilflowIO/tsdav#44)
 
 ## v2.4.0 (PhilflowIO fork)
 

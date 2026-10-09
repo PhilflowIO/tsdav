@@ -1,6 +1,6 @@
 {
   "name": "@philflow/tsdav",
-  "version": "2.4.0",
+  "version": "2.5.0",
   "description": "WebDAV, CalDAV and CardDAV client for Node.js and the browser (PhilflowIO fork of tsdav with VTODO, MKCOL address books and Digest auth)",
   "keywords": [
     "dav",
