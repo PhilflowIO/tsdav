@@ -1,6 +1,7 @@
 import { vi, describe, it, expect } from 'vitest';
 import { createAccount, fetchPrincipalUrl } from '../../account';
-import { collectionQuery } from '../../collection';
+import { collectionQuery, smartCollectionSyncDetailed } from '../../collection';
+import { fetchCalendarUserAddresses } from '../../calendar';
 import { assertDAVResponses } from '../../util/responseHelpers';
 import { createDAVClient } from '../../client';
 import { getOauthHeaders } from '../../util/authHelpers';
@@ -247,5 +248,54 @@ describe('DAVResponseError', () => {
     expect(tsdav.isDAVAuthenticationError(error)).toBe(false);
     expect(error.status).toBe(403);
     expect(error.url).toBe('https://example.com/dav/');
+  });
+
+  it.each([
+    [401, true],
+    [403, false],
+  ])(
+    'a sync REPORT answered %i keeps the message and its status (refused login: %s)',
+    async (status, auth) => {
+      const fetch = vi.fn().mockResolvedValue(response(status, 'Nope', '"no"'));
+
+      const error = await smartCollectionSyncDetailed({
+        account: {
+          serverUrl: 'https://example.com/',
+          rootUrl: 'https://example.com/',
+          homeUrl: 'https://example.com/cal/',
+          accountType: 'caldav',
+        },
+        collection: {
+          url: 'https://example.com/cal/work/',
+          syncToken: 'old',
+          reports: ['syncCollection'],
+          objects: [],
+          objectMultiGet: vi.fn().mockResolvedValue([]),
+        },
+        fetch,
+      }).catch((e) => e);
+
+      expect(error.message).toBe(`Collection sync failed: ${status} Nope`);
+      expect(tsdav.isDAVResponseError(error)).toBe(true);
+      expect(tsdav.isDAVAuthenticationError(error)).toBe(auth);
+      expect(error.status).toBe(status);
+    },
+  );
+
+  it('fetchCalendarUserAddresses: a 403 keeps its status and the old message', async () => {
+    const error = await fetchCalendarUserAddresses({
+      account: {
+        serverUrl: 'https://example.com/',
+        rootUrl: 'https://example.com/',
+        principalUrl: 'https://example.com/principals/u/',
+        accountType: 'caldav',
+      },
+      fetch: vi.fn().mockResolvedValue(response(403, 'Forbidden', '"no"')),
+    }).catch((e) => e);
+
+    expect(error.message).toBe('cannot find calendarUserAddresses');
+    expect(tsdav.isDAVResponseError(error)).toBe(true);
+    expect(error.status).toBe(403);
+    expect(error.url).toBe('https://example.com/principals/u/');
   });
 });

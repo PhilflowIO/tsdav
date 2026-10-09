@@ -861,7 +861,10 @@ const smartCollectionSync = async (params) => {
 			return typeof r.href === "string" && getDAVUrlKey(r.href, collection.url) !== getDAVUrlKey(collection.url, collection.url) && !r.props?.resourcetype?.collection;
 		};
 		const errorResponse = result.find((r) => (!r.ok || r.status >= 400) && !(r.status === 404 && !r.propStats?.length && isObjectResponse(r)));
-		if (errorResponse) throw new Error(`Collection sync failed: ${errorResponse.status} ${errorResponse.statusText}`);
+		if (errorResponse) throw davResponseError(`Collection sync failed: ${errorResponse.status} ${errorResponse.statusText}`, {
+			status: errorResponse.status,
+			url: errorResponse.href ?? collection.url
+		});
 		if (result.some((response) => response.raw && !response.raw.multistatus)) throw new Error("Collection sync failed: expected a DAV multistatus response");
 		if (result.some((response) => response.raw?.multistatus?.response && (typeof response.href !== "string" || !response.href))) throw new Error("Collection sync failed: missing href in DAV response");
 		const objectResponses = result.filter(isObjectResponse);
@@ -1205,7 +1208,7 @@ const fetchCalendarUserAddresses = async (params) => {
 	const requiredFields = ["principalUrl", "rootUrl"];
 	if (!hasFields(account, requiredFields)) throw new Error(`account must have ${findMissingFieldNames(account, requiredFields)} before fetchUserAddresses`);
 	debug$5(`Fetch user addresses from ${account.principalUrl}`);
-	const matched = (await propfind({
+	const responses = await propfind({
 		url: account.principalUrl,
 		props: { [`c:calendar-user-address-set`]: {} },
 		depth: "0",
@@ -1213,8 +1216,16 @@ const fetchCalendarUserAddresses = async (params) => {
 		headersToExclude,
 		fetchOptions,
 		fetch: fetchOverride
-	})).find((r) => urlMatches(account.principalUrl, r.href, account.rootUrl));
-	if (!matched || !matched.ok) throw new Error("cannot find calendarUserAddresses");
+	});
+	const matched = responses.find((r) => urlMatches(account.principalUrl, r.href, account.rootUrl));
+	if (!matched || !matched.ok) {
+		const failed = matched ?? responses.find((r) => !r.ok && typeof r.status === "number");
+		if (failed && !failed.ok && typeof failed.status === "number") throw davResponseError("cannot find calendarUserAddresses", {
+			status: failed.status,
+			url: account.principalUrl
+		});
+		throw new Error("cannot find calendarUserAddresses");
+	}
 	const rawHrefs = matched?.props?.calendarUserAddressSet?.href;
 	let hrefArray = [];
 	if (Array.isArray(rawHrefs)) hrefArray = rawHrefs;

@@ -384,8 +384,9 @@ export const smartCollectionSync: SmartCollectionSync = async <T extends DAVColl
         !(r.status === 404 && !r.propStats?.length && isObjectResponse(r)),
     );
     if (errorResponse) {
-      throw new Error(
+      throw davResponseError(
         `Collection sync failed: ${errorResponse.status} ${errorResponse.statusText}`,
+        { status: errorResponse.status, url: errorResponse.href ?? collection.url },
       );
     }
 
