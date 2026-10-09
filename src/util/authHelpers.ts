@@ -102,11 +102,13 @@ export const getBearerAuthHeaders = (credentials: DAVCredentials): { authorizati
   };
 };
 
-export const fetchOauthTokens = async (
+type TokenResult = { tokens: DAVTokens; failure?: { status: number; url: string } };
+
+const requestOauthTokens = async (
   credentials: DAVCredentials,
   fetchOptions?: RequestInit,
   fetchOverride?: typeof fetch,
-): Promise<DAVTokens> => {
+): Promise<TokenResult> => {
   const requireFields: Array<keyof DAVCredentials> = [
     'authorizationCode',
     'redirectUrl',
@@ -145,17 +147,24 @@ export const fetchOauthTokens = async (
       refresh_token: string;
       expires_in: number;
     } = await response.json();
-    return tokens;
+    return { tokens };
   }
   debug(`Fetch Oauth tokens failed with status ${response.status}`);
-  return {};
+  return { tokens: {}, failure: { status: response.status, url: credentials.tokenUrl } };
 };
 
-export const refreshAccessToken = async (
+export const fetchOauthTokens = async (
   credentials: DAVCredentials,
   fetchOptions?: RequestInit,
   fetchOverride?: typeof fetch,
-): Promise<DAVTokens> => {
+): Promise<DAVTokens> =>
+  (await requestOauthTokens(credentials, fetchOptions, fetchOverride)).tokens;
+
+const requestAccessTokenRefresh = async (
+  credentials: DAVCredentials,
+  fetchOptions?: RequestInit,
+  fetchOverride?: typeof fetch,
+): Promise<TokenResult> => {
   const requireFields: Array<keyof DAVCredentials> = [
     'refreshToken',
     'clientId',
@@ -187,11 +196,18 @@ export const refreshAccessToken = async (
     // payload back to callers so they can persist whichever fields were
     // returned.
     const tokens = (await response.json()) as DAVTokens;
-    return tokens;
+    return { tokens };
   }
   debug(`Refresh access token failed with status ${response.status}`);
-  return {};
+  return { tokens: {}, failure: { status: response.status, url: credentials.tokenUrl } };
 };
+
+export const refreshAccessToken = async (
+  credentials: DAVCredentials,
+  fetchOptions?: RequestInit,
+  fetchOverride?: typeof fetch,
+): Promise<DAVTokens> =>
+  (await requestAccessTokenRefresh(credentials, fetchOptions, fetchOverride)).tokens;
 
 /**
  * Resolve OAuth headers for the given credentials.
@@ -206,9 +222,15 @@ export const getOauthHeaders = async (
   credentials: DAVCredentials,
   fetchOptions?: RequestInit,
   fetchOverride?: typeof fetch,
-): Promise<{ tokens: DAVTokens; headers: { authorization?: string } }> => {
+): Promise<{
+  tokens: DAVTokens;
+  headers: { authorization?: string };
+  /** Set when the token endpoint answered with an error status. */
+  failure?: { status: number; url: string };
+}> => {
   debug('Fetching oauth headers');
   let tokens: DAVTokens = {};
+  let failure: TokenResult['failure'];
   let didRefresh = false;
   if (
     credentials.accessToken &&
@@ -217,9 +239,9 @@ export const getOauthHeaders = async (
   ) {
     tokens = { access_token: credentials.accessToken, refresh_token: credentials.refreshToken };
   } else {
-    tokens = credentials.refreshToken
-      ? await refreshAccessToken(credentials, fetchOptions, fetchOverride)
-      : await fetchOauthTokens(credentials, fetchOptions, fetchOverride);
+    ({ tokens, failure } = credentials.refreshToken
+      ? await requestAccessTokenRefresh(credentials, fetchOptions, fetchOverride)
+      : await requestOauthTokens(credentials, fetchOptions, fetchOverride));
     didRefresh = true;
   }
 
@@ -246,5 +268,6 @@ export const getOauthHeaders = async (
   return {
     tokens,
     headers: tokens.access_token ? { authorization: `Bearer ${tokens.access_token}` } : {},
+    ...(failure && { failure }),
   };
 };

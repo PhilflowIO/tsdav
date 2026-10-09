@@ -1,10 +1,16 @@
 import { DAVResponse } from '../types/DAVTypes';
 import { hasOwn } from './typeHelpers';
 import { getDAVUrlKey } from './syncHelpers';
+import { davResponseError } from './authError';
 
 export const assertDAVResponses = (responses: DAVResponse[], context: string): void => {
   const failed = responses.find((response) => !response.ok || response.status >= 400);
-  if (failed) throw new Error(`${context}: ${failed.status} ${failed.statusText}`);
+  if (failed) {
+    throw davResponseError(`${context}: ${failed.status} ${failed.statusText}`, {
+      status: failed.status,
+      url: failed.href ?? '',
+    });
+  }
 };
 
 export const assertDAVDiscovery = (responses: DAVResponse[], context: string): void => {
@@ -26,7 +32,10 @@ export const assertDAVDiscovery = (responses: DAVResponse[], context: string): v
 export const assertDAVProperty = (response: DAVResponse, name: string, context: string): void => {
   const failed = response.propStats?.find((stat) => !stat.ok && hasOwn(stat.props, name));
   if (failed && !hasOwn(response.props ?? {}, name)) {
-    throw new Error(`${context}: ${name} returned ${failed.status} ${failed.statusText}`);
+    throw davResponseError(`${context}: ${name} returned ${failed.status} ${failed.statusText}`, {
+      status: failed.status,
+      url: response.href ?? '',
+    });
   }
 };
 

@@ -1,3 +1,13 @@
+## Unreleased (PhilflowIO fork)
+
+##### features
+- `DAVResponseError` (with `isDAVResponseError`): a subclass of `Error` with `code` `'TSDAV_RESPONSE_ERROR'`, `status` and `url`, thrown where a request is answered with an error status — discovery (`assertDAVResponses`, `assertDAVProperty`, `fetchPrincipalUrl`, `fetchHomeUrl`, `fetchCalendarUserAddresses`), `collectionQuery`, `isCollectionDirty`, `smartCollectionSync` and the OAuth token request. Messages are unchanged (PhilflowIO/tsdav#42)
+- `DAVAuthenticationError` (with `isDAVAuthenticationError`), a `DAVResponseError` with `code` `'TSDAV_AUTHENTICATION_FAILED'`, for every one of those answered with `401`, and for an OAuth token endpoint refusing the grant with `400` or `401` (RFC 6749 5.2); a token endpoint answering anything else is a `DAVResponseError` with its status
+- `getOauthHeaders` adds `failure: { status, url }` to its result when the token endpoint answers with an error status; the other fields are unchanged
+
+##### fixes
+- `createAccount` keeps a credentials error across root-URL candidates by its type instead of its message prefix
+
 ## v2.4.0 (PhilflowIO fork)
 
 **Installing this fork.** The fork is on npm as `@philflow/tsdav`. Code that imports `tsdav` keeps its imports and installs the fork under an alias:
