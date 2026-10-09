@@ -590,10 +590,47 @@ const diffDAVObjects = (local, remote, baseUrl, incremental = false, deletedObje
 	};
 };
 //#endregion
+//#region src/util/authError.ts
+/**
+* Thrown when a DAV request, or an OAuth token request, is answered with an
+* error status. `status` and `url` say who answered what, so callers can tell
+* a missing collection from a refused one or a server failure without reading
+* the message.
+*/
+var DAVResponseError = class extends Error {
+	constructor(message, params) {
+		super(message);
+		this.code = "TSDAV_RESPONSE_ERROR";
+		this.name = "DAVResponseError";
+		this.status = params.status;
+		this.url = params.url;
+	}
+};
+/**
+* Thrown when a server refuses the credentials: a DAV request answered with
+* 401, or an OAuth token endpoint refusing the grant (400 or 401, RFC 6749
+* 5.2). A DAVResponseError like any other error status, with its own code.
+*/
+var DAVAuthenticationError = class extends DAVResponseError {
+	constructor(message, params) {
+		super(message, params);
+		this.code = "TSDAV_AUTHENTICATION_FAILED";
+		this.name = "DAVAuthenticationError";
+	}
+};
+const codeOf = (err) => err?.code;
+const isDAVAuthenticationError = (err) => err instanceof DAVAuthenticationError || codeOf(err) === "TSDAV_AUTHENTICATION_FAILED";
+const isDAVResponseError = (err) => err instanceof DAVResponseError || codeOf(err) === "TSDAV_RESPONSE_ERROR" || isDAVAuthenticationError(err);
+/** The error for a DAV response with an error status: 401 is a refused login. */
+const davResponseError = (message, params) => params.status === 401 ? new DAVAuthenticationError(message, params) : new DAVResponseError(message, params);
+//#endregion
 //#region src/util/responseHelpers.ts
 const assertDAVResponses = (responses, context) => {
 	const failed = responses.find((response) => !response.ok || response.status >= 400);
-	if (failed) throw new Error(`${context}: ${failed.status} ${failed.statusText}`);
+	if (failed) throw davResponseError(`${context}: ${failed.status} ${failed.statusText}`, {
+		status: failed.status,
+		url: failed.href ?? ""
+	});
 };
 const assertDAVDiscovery = (responses, context) => {
 	assertDAVResponses(responses, context);
@@ -605,7 +642,10 @@ const assertDAVDiscovery = (responses, context) => {
 };
 const assertDAVProperty = (response, name, context) => {
 	const failed = response.propStats?.find((stat) => !stat.ok && hasOwn(stat.props, name));
-	if (failed && !hasOwn(response.props ?? {}, name)) throw new Error(`${context}: ${name} returned ${failed.status} ${failed.statusText}`);
+	if (failed && !hasOwn(response.props ?? {}, name)) throw davResponseError(`${context}: ${name} returned ${failed.status} ${failed.statusText}`, {
+		status: failed.status,
+		url: response.href ?? ""
+	});
 };
 const assertDAVObjectResponses = (responses, property, objectUrls, baseUrl, context) => {
 	assertDAVResponses(responses, context);
@@ -666,7 +706,10 @@ const collectionQuery = async (params) => {
 	const emptyNotFound = queryResults[0];
 	if (defaultNamespace === "c" && body?.["calendar-query"] != null && queryResults.length === 1 && emptyNotFound && emptyNotFound.status === 404 && urlMatches(url, emptyNotFound.href, url) && !emptyNotFound.error && Object.keys(emptyNotFound.props ?? {}).length === 0 && typeof emptyNotFound.raw === "object" && emptyNotFound.raw !== null && emptyNotFound.raw.multistatus?.response?.propstat == null) return [];
 	const errorResponse = queryResults.find((res) => !res.ok || res.status && res.status >= 400);
-	if (errorResponse) throw new Error(`Collection query failed: ${errorResponse.status} ${errorResponse.statusText}. ${typeof errorResponse.raw === "string" ? `Raw response: ${errorResponse.raw.slice(0, 4096)}` : ""}`);
+	if (errorResponse) throw davResponseError(`Collection query failed: ${errorResponse.status} ${errorResponse.statusText}. ${typeof errorResponse.raw === "string" ? `Raw response: ${errorResponse.raw.slice(0, 4096)}` : ""}`, {
+		status: errorResponse.status,
+		url: errorResponse.href ?? url
+	});
 	if ((body?.["calendar-query"] || body?.["calendar-multiget"] || body?.["addressbook-query"] || body?.["addressbook-multiget"]) && queryResults.some((response) => !response.raw?.multistatus)) throw new Error("Collection query failed: expected a DAV multistatus response");
 	if ((body?.["calendar-query"] || body?.["calendar-multiget"] || body?.["addressbook-query"] || body?.["addressbook-multiget"]) && queryResults.some((response) => response.raw?.multistatus?.response && (typeof response.href !== "string" || !response.href))) throw new Error("Collection query failed: missing href in DAV response");
 	const firstQueryResult = queryResults[0];
@@ -727,7 +770,10 @@ const isCollectionDirty = async (params) => {
 	})).find((r) => urlMatches(collection.url, r.href, collection.url));
 	if (!res) throw new Error("Collection does not exist on server");
 	const unavailableCtag = res.propStats?.length && res.propStats.every((stat) => stat.status === 404 && hasOwn(stat.props, "getctag"));
-	if (!res.ok && !unavailableCtag) throw new Error(`Collection status check failed: ${res.status} ${res.statusText}`);
+	if (!res.ok && !unavailableCtag) throw davResponseError(`Collection status check failed: ${res.status} ${res.statusText}`, {
+		status: res.status,
+		url: res.href ?? collection.url
+	});
 	const remoteCtag = getDAVText(res.props?.getctag);
 	return {
 		isDirty: collection.ctag == null || remoteCtag == null || `${collection.ctag}` !== `${remoteCtag}`,
@@ -790,7 +836,10 @@ const smartCollectionSync = async (params) => {
 			return typeof r.href === "string" && getDAVUrlKey(r.href, collection.url) !== getDAVUrlKey(collection.url, collection.url) && !r.props?.resourcetype?.collection;
 		};
 		const errorResponse = result.find((r) => (!r.ok || r.status >= 400) && !(r.status === 404 && !r.propStats?.length && isObjectResponse(r)));
-		if (errorResponse) throw new Error(`Collection sync failed: ${errorResponse.status} ${errorResponse.statusText}`);
+		if (errorResponse) throw davResponseError(`Collection sync failed: ${errorResponse.status} ${errorResponse.statusText}`, {
+			status: errorResponse.status,
+			url: errorResponse.href ?? collection.url
+		});
 		if (result.some((response) => response.raw && !response.raw.multistatus)) throw new Error("Collection sync failed: expected a DAV multistatus response");
 		if (result.some((response) => response.raw?.multistatus?.response && (typeof response.href !== "string" || !response.href))) throw new Error("Collection sync failed: missing href in DAV response");
 		const objectResponses = result.filter(isObjectResponse);
@@ -1134,7 +1183,7 @@ const fetchCalendarUserAddresses = async (params) => {
 	const requiredFields = ["principalUrl", "rootUrl"];
 	if (!hasFields(account, requiredFields)) throw new Error(`account must have ${findMissingFieldNames(account, requiredFields)} before fetchUserAddresses`);
 	debug$4(`Fetch user addresses from ${account.principalUrl}`);
-	const matched = (await propfind({
+	const responses = await propfind({
 		url: account.principalUrl,
 		props: { [`c:calendar-user-address-set`]: {} },
 		depth: "0",
@@ -1142,8 +1191,16 @@ const fetchCalendarUserAddresses = async (params) => {
 		headersToExclude,
 		fetchOptions,
 		fetch: fetchOverride
-	})).find((r) => urlMatches(account.principalUrl, r.href, account.rootUrl));
-	if (!matched || !matched.ok) throw new Error("cannot find calendarUserAddresses");
+	});
+	const matched = responses.find((r) => urlMatches(account.principalUrl, r.href, account.rootUrl));
+	if (!matched || !matched.ok) {
+		const failed = matched ?? responses.find((r) => !r.ok && typeof r.status === "number");
+		if (failed && !failed.ok && typeof failed.status === "number") throw davResponseError("cannot find calendarUserAddresses", {
+			status: failed.status,
+			url: account.principalUrl
+		});
+		throw new Error("cannot find calendarUserAddresses");
+	}
 	const rawHrefs = matched?.props?.calendarUserAddressSet?.href;
 	let hrefArray = [];
 	if (Array.isArray(rawHrefs)) hrefArray = rawHrefs;
@@ -2002,7 +2059,14 @@ const fetchPrincipalUrl = async (params) => {
 	});
 	if (!response?.ok) {
 		debug$2(`Fetch principal url failed: ${response?.statusText ?? "empty response"}`);
-		if (response?.status === 401) throw new Error(`Invalid credentials: PROPFIND ${account.rootUrl} returned 401 Unauthorized`);
+		if (response?.status === 401) throw new DAVAuthenticationError(`Invalid credentials: PROPFIND ${account.rootUrl} returned 401 Unauthorized`, {
+			status: 401,
+			url: account.rootUrl
+		});
+		if (typeof response?.status === "number") throw davResponseError("cannot find principalUrl", {
+			status: response.status,
+			url: account.rootUrl
+		});
 		throw new Error("cannot find principalUrl");
 	}
 	const principalHref = extractHref(response.props?.currentUserPrincipal?.href);
@@ -2030,6 +2094,10 @@ const fetchHomeUrl = async (params) => {
 	const matched = responses.find((r) => urlMatches(account.principalUrl, r.href, account.rootUrl));
 	if (!matched || !matched.ok) {
 		debug$2(`Fetch home url failed with status ${matched?.statusText} and error ${JSON.stringify(responses.map((r) => r.error))}`);
+		if (matched && typeof matched.status === "number") throw davResponseError("cannot find homeUrl", {
+			status: matched.status,
+			url: account.principalUrl
+		});
 		throw new Error("cannot find homeUrl");
 	}
 	const homeHref = extractHref(account.accountType === "caldav" ? matched.props?.calendarHomeSet?.href : matched.props?.addressbookHomeSet?.href);
@@ -2073,7 +2141,7 @@ const createAccount = async (params) => {
 				};
 			} catch (err) {
 				if (isDigestUnsupportedError(err)) throw err;
-				const isCredentialsError = lastPrincipalError?.message.startsWith("Invalid credentials");
+				const isCredentialsError = isDAVAuthenticationError(lastPrincipalError);
 				return findPrincipalUrl(rootUrls, index + 1, isCredentialsError ? lastPrincipalError : err);
 			}
 		};
@@ -2335,7 +2403,7 @@ const getBasicAuthHeaders = (credentials) => {
 const getBearerAuthHeaders = (credentials) => {
 	return { authorization: `Bearer ${credentials.accessToken}` };
 };
-const fetchOauthTokens = async (credentials, fetchOptions, fetchOverride) => {
+const requestOauthTokens = async (credentials, fetchOptions, fetchOverride) => {
 	const requireFields = [
 		"authorizationCode",
 		"redirectUrl",
@@ -2360,11 +2428,18 @@ const fetchOauthTokens = async (credentials, fetchOptions, fetchOverride) => {
 		body: param.toString(),
 		headers: mergeHeaders({ "content-type": "application/x-www-form-urlencoded" }, fetchHeaders)
 	});
-	if (response.ok) return await response.json();
+	if (response.ok) return { tokens: await response.json() };
 	debug(`Fetch Oauth tokens failed with status ${response.status}`);
-	return {};
+	return {
+		tokens: {},
+		failure: {
+			status: response.status,
+			url: credentials.tokenUrl
+		}
+	};
 };
-const refreshAccessToken = async (credentials, fetchOptions, fetchOverride) => {
+const fetchOauthTokens = async (credentials, fetchOptions, fetchOverride) => (await requestOauthTokens(credentials, fetchOptions, fetchOverride)).tokens;
+const requestAccessTokenRefresh = async (credentials, fetchOptions, fetchOverride) => {
 	const requireFields = [
 		"refreshToken",
 		"clientId",
@@ -2386,10 +2461,17 @@ const refreshAccessToken = async (credentials, fetchOptions, fetchOverride) => {
 		body: param.toString(),
 		headers: mergeHeaders({ "Content-Type": "application/x-www-form-urlencoded" }, fetchHeaders)
 	});
-	if (response.ok) return await response.json();
+	if (response.ok) return { tokens: await response.json() };
 	debug(`Refresh access token failed with status ${response.status}`);
-	return {};
+	return {
+		tokens: {},
+		failure: {
+			status: response.status,
+			url: credentials.tokenUrl
+		}
+	};
 };
+const refreshAccessToken = async (credentials, fetchOptions, fetchOverride) => (await requestAccessTokenRefresh(credentials, fetchOptions, fetchOverride)).tokens;
 /**
 * Resolve OAuth headers for the given credentials.
 *
@@ -2402,13 +2484,14 @@ const refreshAccessToken = async (credentials, fetchOptions, fetchOverride) => {
 const getOauthHeaders = async (credentials, fetchOptions, fetchOverride) => {
 	debug("Fetching oauth headers");
 	let tokens = {};
+	let failure;
 	let didRefresh = false;
 	if (credentials.accessToken && (credentials.expiration == null && !credentials.refreshToken || credentials.expiration != null && Date.now() < credentials.expiration)) tokens = {
 		access_token: credentials.accessToken,
 		refresh_token: credentials.refreshToken
 	};
 	else {
-		tokens = credentials.refreshToken ? await refreshAccessToken(credentials, fetchOptions, fetchOverride) : await fetchOauthTokens(credentials, fetchOptions, fetchOverride);
+		({tokens, failure} = credentials.refreshToken ? await requestAccessTokenRefresh(credentials, fetchOptions, fetchOverride) : await requestOauthTokens(credentials, fetchOptions, fetchOverride));
 		didRefresh = true;
 	}
 	if (didRefresh) {
@@ -2419,7 +2502,8 @@ const getOauthHeaders = async (credentials, fetchOptions, fetchOverride) => {
 	debug("Oauth tokens obtained");
 	return {
 		tokens,
-		headers: tokens.access_token ? { authorization: `Bearer ${tokens.access_token}` } : {}
+		headers: tokens.access_token ? { authorization: `Bearer ${tokens.access_token}` } : {},
+		...failure && { failure }
 	};
 };
 //#endregion
@@ -2433,8 +2517,13 @@ const resolveAuthHeaders = async (client, fetchOptions = client.fetchOptions, fe
 		case "Basic": return getBasicAuthHeaders(client.credentials);
 		case "Bearer": return getBearerAuthHeaders(client.credentials);
 		case "Oauth": {
-			const { headers } = await getOauthHeaders(client.credentials, fetchOptions, fetchOverride);
-			if (!headers.authorization) throw new Error("OAuth authentication failed: token endpoint returned no access token");
+			const { headers, failure } = await getOauthHeaders(client.credentials, fetchOptions, fetchOverride);
+			if (!headers.authorization) {
+				const message = "OAuth authentication failed: token endpoint returned no access token";
+				if (failure?.status === 400 || failure?.status === 401) throw new DAVAuthenticationError(message, failure);
+				if (failure) throw new DAVResponseError(message, failure);
+				throw new Error(message);
+			}
 			return headers;
 		}
 		case "Digest": return usesDigestString(client.credentials) ? { Authorization: `Digest ${client.credentials.digestString}` } : {};
@@ -2750,4 +2839,4 @@ var src_default = {
 	...requestHelpers_exports
 };
 //#endregion
-export { DAVAttributeMap, DAVClient, DAVNamespace, DAVNamespaceShort, DigestUnsupportedError, ICALObjects, addressBookMultiGet, addressBookQuery, calendarMultiGet, calendarQuery, cleanupFalsy, collectionQuery, createAccount, createCalendarObject, createDAVClient, createDigestFetch, createObject, createTodo, createVCard, davRequest, src_default as default, deleteCalendarObject, deleteObject, deleteTodo, deleteVCard, ensureTrailingSlash, excludeHeaders, fetchAddressBooks, fetchCalendarObjects, fetchCalendarUserAddresses, fetchCalendars, fetchHomeUrl, fetchOauthTokens, fetchPrincipalUrl, fetchTodos, fetchVCards, freeBusyQuery, getBasicAuthHeaders, getBearerAuthHeaders, getDAVAttribute, getOauthHeaders, isCollectionDirty, isDigestUnsupportedError, makeAddressBook, makeCalendar, makeCollection, mergeHeaders, propfind, refreshAccessToken, serviceDiscovery, smartCollectionSync, smartCollectionSyncDetailed, supportedReportSet, syncCalendars, syncCalendarsDetailed, syncCollection, todoMultiGet, todoQuery, updateCalendarObject, updateObject, updateTodo, updateVCard, urlContains, urlEquals, urlMatches };
+export { DAVAttributeMap, DAVAuthenticationError, DAVClient, DAVNamespace, DAVNamespaceShort, DAVResponseError, DigestUnsupportedError, ICALObjects, addressBookMultiGet, addressBookQuery, calendarMultiGet, calendarQuery, cleanupFalsy, collectionQuery, createAccount, createCalendarObject, createDAVClient, createDigestFetch, createObject, createTodo, createVCard, davRequest, src_default as default, deleteCalendarObject, deleteObject, deleteTodo, deleteVCard, ensureTrailingSlash, excludeHeaders, fetchAddressBooks, fetchCalendarObjects, fetchCalendarUserAddresses, fetchCalendars, fetchHomeUrl, fetchOauthTokens, fetchPrincipalUrl, fetchTodos, fetchVCards, freeBusyQuery, getBasicAuthHeaders, getBearerAuthHeaders, getDAVAttribute, getOauthHeaders, isCollectionDirty, isDAVAuthenticationError, isDAVResponseError, isDigestUnsupportedError, makeAddressBook, makeCalendar, makeCollection, mergeHeaders, propfind, refreshAccessToken, serviceDiscovery, smartCollectionSync, smartCollectionSyncDetailed, supportedReportSet, syncCalendars, syncCalendarsDetailed, syncCollection, todoMultiGet, todoQuery, updateCalendarObject, updateObject, updateTodo, updateVCard, urlContains, urlEquals, urlMatches };

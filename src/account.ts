@@ -6,6 +6,11 @@ import { DAVNamespaceShort } from './consts';
 import { propfind } from './request';
 import { DAVAccount } from './types/models';
 import { isDigestUnsupportedError } from './util/digestAuth';
+import {
+  DAVAuthenticationError,
+  davResponseError,
+  isDAVAuthenticationError,
+} from './util/authError';
 import { fetch } from './util/fetch';
 import {
   excludeHeaders,
@@ -162,7 +167,16 @@ export const fetchPrincipalUrl = async (params: {
   if (!response?.ok) {
     debug(`Fetch principal url failed: ${response?.statusText ?? 'empty response'}`);
     if (response?.status === 401) {
-      throw new Error(`Invalid credentials: PROPFIND ${account.rootUrl} returned 401 Unauthorized`);
+      throw new DAVAuthenticationError(
+        `Invalid credentials: PROPFIND ${account.rootUrl} returned 401 Unauthorized`,
+        { status: 401, url: account.rootUrl },
+      );
+    }
+    if (typeof response?.status === 'number') {
+      throw davResponseError('cannot find principalUrl', {
+        status: response.status,
+        url: account.rootUrl,
+      });
     }
     throw new Error('cannot find principalUrl');
   }
@@ -211,6 +225,12 @@ export const fetchHomeUrl = async (params: {
     debug(
       `Fetch home url failed with status ${matched?.statusText} and error ${JSON.stringify(responses.map((r) => r.error))}`,
     );
+    if (matched && typeof matched.status === 'number') {
+      throw davResponseError('cannot find homeUrl', {
+        status: matched.status,
+        url: account.principalUrl,
+      });
+    }
     throw new Error('cannot find homeUrl');
   }
 
@@ -295,7 +315,7 @@ export const createAccount = async (params: {
         if (isDigestUnsupportedError(err)) throw err;
         // A 401 on one candidate explains why the others failed better than
         // their own errors (e.g. an HTML page at the server root), so keep it.
-        const isCredentialsError = lastPrincipalError?.message.startsWith('Invalid credentials');
+        const isCredentialsError = isDAVAuthenticationError(lastPrincipalError);
         return findPrincipalUrl(
           rootUrls,
           index + 1,

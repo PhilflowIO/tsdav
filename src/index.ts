@@ -93,6 +93,12 @@ export {
   refreshAccessToken,
 } from './util/authHelpers';
 export {
+  DAVAuthenticationError,
+  DAVResponseError,
+  isDAVAuthenticationError,
+  isDAVResponseError,
+} from './util/authError';
+export {
   createDigestFetch,
   DigestUnsupportedError,
   isDigestUnsupportedError,

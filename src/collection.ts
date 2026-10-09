@@ -20,6 +20,7 @@ import {
 } from './util/requestHelpers';
 import { diffDAVObjects, getDAVUrlKey } from './util/syncHelpers';
 import { assertDAVObjectResponses, getDAVText } from './util/responseHelpers';
+import { davResponseError } from './util/authError';
 import {
   findMissingFieldNames,
   hasFields,
@@ -94,12 +95,13 @@ export const collectionQuery = async (params: {
 
   const errorResponse = queryResults.find((res) => !res.ok || (res.status && res.status >= 400));
   if (errorResponse) {
-    throw new Error(
+    throw davResponseError(
       `Collection query failed: ${errorResponse.status} ${errorResponse.statusText}. ${
         typeof errorResponse.raw === 'string'
           ? `Raw response: ${errorResponse.raw.slice(0, 4096)}`
           : ''
       }`,
+      { status: errorResponse.status, url: errorResponse.href ?? url },
     );
   }
 
@@ -252,7 +254,10 @@ export const isCollectionDirty = async (params: {
     res.propStats?.length &&
     res.propStats.every((stat) => stat.status === 404 && hasOwn(stat.props, 'getctag'));
   if (!res.ok && !unavailableCtag) {
-    throw new Error(`Collection status check failed: ${res.status} ${res.statusText}`);
+    throw davResponseError(`Collection status check failed: ${res.status} ${res.statusText}`, {
+      status: res.status,
+      url: res.href ?? collection.url,
+    });
   }
   const remoteCtag = getDAVText(res.props?.getctag);
   return {
@@ -379,8 +384,9 @@ export const smartCollectionSync: SmartCollectionSync = async <T extends DAVColl
         !(r.status === 404 && !r.propStats?.length && isObjectResponse(r)),
     );
     if (errorResponse) {
-      throw new Error(
+      throw davResponseError(
         `Collection sync failed: ${errorResponse.status} ${errorResponse.statusText}`,
+        { status: errorResponse.status, url: errorResponse.href ?? collection.url },
       );
     }
 

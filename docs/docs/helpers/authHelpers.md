@@ -107,6 +107,42 @@ credential storage. A refresh failure rejects the client request before sending 
 access token can be reused without a refresh token; an unknown expiry with an available refresh token
 triggers refresh when authentication is first resolved.
 
+When the token endpoint answers with an error status, the result also carries
+`failure: { status, url }`, and `tokens` and `headers` are empty.
+
+### DAVResponseError and DAVAuthenticationError
+
+tsdav throws a `DAVResponseError` when a request is answered with an error status: discovery
+(`Calendar discovery failed: 403 Forbidden`, `cannot find principalUrl`, `cannot find homeUrl`),
+a collection query (`Collection query failed: 500 …`), a collection status check, or an OAuth
+token endpoint answering anything but a token. It is a subclass of `Error` with `code`
+`'TSDAV_RESPONSE_ERROR'`, the HTTP `status` and the `url` that answered. The messages are the ones
+tsdav threw before.
+
+A refusal of the credentials is a `DAVAuthenticationError`, a subclass of `DAVResponseError` with
+`code` `'TSDAV_AUTHENTICATION_FAILED'`: any of the above answered with `401` (account discovery:
+`Invalid credentials: PROPFIND <url> returned 401 Unauthorized`), or an OAuth token endpoint
+refusing the grant with `400` or `401` (RFC 6749 5.2; message `OAuth authentication failed: token
+endpoint returned no access token`). A token endpoint answering `429`, `404` or `5xx` is a plain
+`DAVResponseError` with that status. So a caller can tell a wrong password from a forbidden
+resource, a rate limit or an unreachable server without reading the message.
+
+`isDAVResponseError` and `isDAVAuthenticationError` also accept the `code`, so they work when two
+copies of tsdav are loaded.
+
+```ts
+import { createDAVClient, isDAVAuthenticationError } from 'tsdav';
+
+try {
+  await createDAVClient({ serverUrl, credentials, authMethod: 'Basic', defaultAccountType: 'caldav' });
+} catch (err) {
+  if (isDAVAuthenticationError(err)) {
+    console.error(`login refused by ${err.url} (${err.status})`);
+  }
+  throw err;
+}
+```
+
 ### defaultParam
 
 :::caution

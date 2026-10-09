@@ -24,6 +24,7 @@ import {
 import { getDAVUrlKey } from './util/syncHelpers';
 import { assertDAVDiscovery, assertDAVObjectResponses, getDAVText } from './util/responseHelpers';
 import { findMissingFieldNames, hasFields } from './util/typeHelpers';
+import { davResponseError } from './util/authError';
 
 const debug = getLogger('tsdav:calendar');
 
@@ -65,6 +66,14 @@ export const fetchCalendarUserAddresses = async (params: {
 
   const matched = responses.find((r) => urlMatches(account.principalUrl, r.href, account.rootUrl));
   if (!matched || !matched.ok) {
+    // The principal answered with an error status (a 403, say): keep it.
+    const failed = matched ?? responses.find((r) => !r.ok && typeof r.status === 'number');
+    if (failed && !failed.ok && typeof failed.status === 'number') {
+      throw davResponseError('cannot find calendarUserAddresses', {
+        status: failed.status,
+        url: account.principalUrl,
+      });
+    }
     throw new Error('cannot find calendarUserAddresses');
   }
 
