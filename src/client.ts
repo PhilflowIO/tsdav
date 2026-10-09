@@ -72,6 +72,7 @@ import {
 import { createDigestAuthState, createDigestFetch, DigestAuthState } from './util/digestAuth';
 import { Optional } from './util/typeHelpers';
 import { mergeHeaders } from './util/requestHelpers';
+import { DAVAuthenticationError } from './util/authError';
 
 const resolveAuthHeaders = async (
   client: DAVClient,
@@ -84,9 +85,18 @@ const resolveAuthHeaders = async (
     case 'Bearer':
       return getBearerAuthHeaders(client.credentials);
     case 'Oauth': {
-      const { headers } = await getOauthHeaders(client.credentials, fetchOptions, fetchOverride);
+      const { headers, failure } = await getOauthHeaders(
+        client.credentials,
+        fetchOptions,
+        fetchOverride,
+      );
       if (!headers.authorization) {
-        throw new Error('OAuth authentication failed: token endpoint returned no access token');
+        const message = 'OAuth authentication failed: token endpoint returned no access token';
+        // RFC 6749 5.2: the endpoint refuses a grant or client with 400 or 401.
+        if (failure && failure.status >= 400 && failure.status < 500) {
+          throw new DAVAuthenticationError(message, failure);
+        }
+        throw new Error(message);
       }
       return headers;
     }

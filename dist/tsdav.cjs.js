@@ -1927,6 +1927,24 @@ const createDigestFetch = (params) => {
 	};
 };
 //#endregion
+//#region src/util/authError.ts
+/**
+* Thrown when a server refuses the credentials: a DAV request answered with
+* 401, or an OAuth token endpoint refusing the grant (4xx). `status` and `url`
+* say who refused, so callers can tell a wrong password from a server that is
+* down or is not a DAV server without reading the message.
+*/
+var DAVAuthenticationError = class extends Error {
+	constructor(message, params) {
+		super(message);
+		this.code = "TSDAV_AUTHENTICATION_FAILED";
+		this.name = "DAVAuthenticationError";
+		this.status = params.status;
+		this.url = params.url;
+	}
+};
+const isDAVAuthenticationError = (err) => err instanceof DAVAuthenticationError || err?.code === "TSDAV_AUTHENTICATION_FAILED";
+//#endregion
 //#region src/account.ts
 var account_exports = /* @__PURE__ */ __exportAll({
 	createAccount: () => createAccount,
@@ -2029,7 +2047,10 @@ const fetchPrincipalUrl = async (params) => {
 	});
 	if (!response?.ok) {
 		debug$3(`Fetch principal url failed: ${response?.statusText ?? "empty response"}`);
-		if (response?.status === 401) throw new Error(`Invalid credentials: PROPFIND ${account.rootUrl} returned 401 Unauthorized`);
+		if (response?.status === 401) throw new DAVAuthenticationError(`Invalid credentials: PROPFIND ${account.rootUrl} returned 401 Unauthorized`, {
+			status: 401,
+			url: account.rootUrl
+		});
 		throw new Error("cannot find principalUrl");
 	}
 	const principalHref = extractHref(response.props?.currentUserPrincipal?.href);
@@ -2100,7 +2121,7 @@ const createAccount = async (params) => {
 				};
 			} catch (err) {
 				if (isDigestUnsupportedError(err)) throw err;
-				const isCredentialsError = lastPrincipalError?.message.startsWith("Invalid credentials");
+				const isCredentialsError = isDAVAuthenticationError(lastPrincipalError);
 				return findPrincipalUrl(rootUrls, index + 1, isCredentialsError ? lastPrincipalError : err);
 			}
 		};
@@ -2362,7 +2383,7 @@ const getBasicAuthHeaders = (credentials) => {
 const getBearerAuthHeaders = (credentials) => {
 	return { authorization: `Bearer ${credentials.accessToken}` };
 };
-const fetchOauthTokens = async (credentials, fetchOptions, fetchOverride) => {
+const requestOauthTokens = async (credentials, fetchOptions, fetchOverride) => {
 	const requireFields = [
 		"authorizationCode",
 		"redirectUrl",
@@ -2387,11 +2408,18 @@ const fetchOauthTokens = async (credentials, fetchOptions, fetchOverride) => {
 		body: param.toString(),
 		headers: mergeHeaders({ "content-type": "application/x-www-form-urlencoded" }, fetchHeaders)
 	});
-	if (response.ok) return await response.json();
+	if (response.ok) return { tokens: await response.json() };
 	debug$1(`Fetch Oauth tokens failed with status ${response.status}`);
-	return {};
+	return {
+		tokens: {},
+		failure: {
+			status: response.status,
+			url: credentials.tokenUrl
+		}
+	};
 };
-const refreshAccessToken = async (credentials, fetchOptions, fetchOverride) => {
+const fetchOauthTokens = async (credentials, fetchOptions, fetchOverride) => (await requestOauthTokens(credentials, fetchOptions, fetchOverride)).tokens;
+const requestAccessTokenRefresh = async (credentials, fetchOptions, fetchOverride) => {
 	const requireFields = [
 		"refreshToken",
 		"clientId",
@@ -2413,10 +2441,17 @@ const refreshAccessToken = async (credentials, fetchOptions, fetchOverride) => {
 		body: param.toString(),
 		headers: mergeHeaders({ "Content-Type": "application/x-www-form-urlencoded" }, fetchHeaders)
 	});
-	if (response.ok) return await response.json();
+	if (response.ok) return { tokens: await response.json() };
 	debug$1(`Refresh access token failed with status ${response.status}`);
-	return {};
+	return {
+		tokens: {},
+		failure: {
+			status: response.status,
+			url: credentials.tokenUrl
+		}
+	};
 };
+const refreshAccessToken = async (credentials, fetchOptions, fetchOverride) => (await requestAccessTokenRefresh(credentials, fetchOptions, fetchOverride)).tokens;
 /**
 * Resolve OAuth headers for the given credentials.
 *
@@ -2429,13 +2464,14 @@ const refreshAccessToken = async (credentials, fetchOptions, fetchOverride) => {
 const getOauthHeaders = async (credentials, fetchOptions, fetchOverride) => {
 	debug$1("Fetching oauth headers");
 	let tokens = {};
+	let failure;
 	let didRefresh = false;
 	if (credentials.accessToken && (credentials.expiration == null && !credentials.refreshToken || credentials.expiration != null && Date.now() < credentials.expiration)) tokens = {
 		access_token: credentials.accessToken,
 		refresh_token: credentials.refreshToken
 	};
 	else {
-		tokens = credentials.refreshToken ? await refreshAccessToken(credentials, fetchOptions, fetchOverride) : await fetchOauthTokens(credentials, fetchOptions, fetchOverride);
+		({tokens, failure} = credentials.refreshToken ? await requestAccessTokenRefresh(credentials, fetchOptions, fetchOverride) : await requestOauthTokens(credentials, fetchOptions, fetchOverride));
 		didRefresh = true;
 	}
 	if (didRefresh) {
@@ -2446,7 +2482,8 @@ const getOauthHeaders = async (credentials, fetchOptions, fetchOverride) => {
 	debug$1("Oauth tokens obtained");
 	return {
 		tokens,
-		headers: tokens.access_token ? { authorization: `Bearer ${tokens.access_token}` } : {}
+		headers: tokens.access_token ? { authorization: `Bearer ${tokens.access_token}` } : {},
+		...failure && { failure }
 	};
 };
 //#endregion
@@ -2460,8 +2497,12 @@ const resolveAuthHeaders = async (client, fetchOptions = client.fetchOptions, fe
 		case "Basic": return getBasicAuthHeaders(client.credentials);
 		case "Bearer": return getBearerAuthHeaders(client.credentials);
 		case "Oauth": {
-			const { headers } = await getOauthHeaders(client.credentials, fetchOptions, fetchOverride);
-			if (!headers.authorization) throw new Error("OAuth authentication failed: token endpoint returned no access token");
+			const { headers, failure } = await getOauthHeaders(client.credentials, fetchOptions, fetchOverride);
+			if (!headers.authorization) {
+				const message = "OAuth authentication failed: token endpoint returned no access token";
+				if (failure && failure.status >= 400 && failure.status < 500) throw new DAVAuthenticationError(message, failure);
+				throw new Error(message);
+			}
 			return headers;
 		}
 		case "Digest": return usesDigestString(client.credentials) ? { Authorization: `Digest ${client.credentials.digestString}` } : {};
@@ -2778,6 +2819,7 @@ var src_default = {
 };
 //#endregion
 exports.DAVAttributeMap = DAVAttributeMap;
+exports.DAVAuthenticationError = DAVAuthenticationError;
 exports.DAVClient = DAVClient;
 exports.DAVNamespace = DAVNamespace;
 exports.DAVNamespaceShort = DAVNamespaceShort;
@@ -2819,6 +2861,7 @@ exports.getBearerAuthHeaders = getBearerAuthHeaders;
 exports.getDAVAttribute = getDAVAttribute;
 exports.getOauthHeaders = getOauthHeaders;
 exports.isCollectionDirty = isCollectionDirty;
+exports.isDAVAuthenticationError = isDAVAuthenticationError;
 exports.isDigestUnsupportedError = isDigestUnsupportedError;
 exports.makeAddressBook = makeAddressBook;
 exports.makeCalendar = makeCalendar;

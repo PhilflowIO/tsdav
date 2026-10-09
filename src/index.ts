@@ -92,6 +92,7 @@ export {
   fetchOauthTokens,
   refreshAccessToken,
 } from './util/authHelpers';
+export { DAVAuthenticationError, isDAVAuthenticationError } from './util/authError';
 export {
   createDigestFetch,
   DigestUnsupportedError,

@@ -30,4 +30,9 @@ export declare const getOauthHeaders: (credentials: DAVCredentials, fetchOptions
     headers: {
         authorization?: string;
     };
+    /** Set when the token endpoint answered with an error status. */
+    failure?: {
+        status: number;
+        url: string;
+    };
 }>;

@@ -1,3 +1,12 @@
+## Unreleased (PhilflowIO fork)
+
+##### features
+- `DAVAuthenticationError` (with `isDAVAuthenticationError`), a subclass of `Error` with `code` `'TSDAV_AUTHENTICATION_FAILED'`, `status` and `url`. `fetchPrincipalUrl` (and so `createAccount` and every client login) throws it on a `401`, an OAuth client when the token endpoint refuses the grant with a `4xx`. The messages are unchanged (PhilflowIO/tsdav#42)
+- `getOauthHeaders` adds `failure: { status, url }` to its result when the token endpoint answers with an error status; the other fields are unchanged
+
+##### fixes
+- `createAccount` keeps a credentials error across root-URL candidates by its type instead of its message prefix
+
 ## v2.4.0 (PhilflowIO fork)
 
 **Installing this fork.** The fork is on npm as `@philflow/tsdav`. Code that imports `tsdav` keeps its imports and installs the fork under an alias:

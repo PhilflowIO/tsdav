@@ -107,6 +107,31 @@ credential storage. A refresh failure rejects the client request before sending 
 access token can be reused without a refresh token; an unknown expiry with an available refresh token
 triggers refresh when authentication is first resolved.
 
+When the token endpoint answers with an error status, the result also carries
+`failure: { status, url }`, and `tokens` and `headers` are empty.
+
+### DAVAuthenticationError
+
+thrown when a server refuses the credentials: a `PROPFIND` during account discovery answered
+with `401` (message `Invalid credentials: PROPFIND <url> returned 401 Unauthorized`), or an OAuth
+token endpoint answering `4xx` to the grant (message `OAuth authentication failed: token endpoint
+returned no access token`). It is a subclass of `Error` with `code`
+`'TSDAV_AUTHENTICATION_FAILED'`, the HTTP `status` and the `url` that refused the request, so a
+caller can tell a wrong password from an unreachable server without reading the message.
+
+```ts
+import { createDAVClient, isDAVAuthenticationError } from 'tsdav';
+
+try {
+  await createDAVClient({ serverUrl, credentials, authMethod: 'Basic', defaultAccountType: 'caldav' });
+} catch (err) {
+  if (isDAVAuthenticationError(err)) {
+    console.error(`login refused by ${err.url} (${err.status})`);
+  }
+  throw err;
+}
+```
+
 ### defaultParam
 
 :::caution
