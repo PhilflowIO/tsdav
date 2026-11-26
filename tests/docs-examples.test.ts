@@ -73,10 +73,31 @@ describe('executable documentation', () => {
     ).toContain('<d:displayname>123</d:displayname>');
     expect(() => convertInput('prop', '(() => { globalThis.executed = true; })()')).toThrow();
     expect((globalThis as any).executed).toBeUndefined();
+    const convertedFilters = JSON.parse(
+      convertInput(
+        'filter',
+        JSON.stringify([
+          {
+            type: 'c:comp-filter',
+            attributes: { name: 'VCALENDAR' },
+            children: [
+              { type: 'c:comp-filter', attributes: { name: 'VEVENT' } },
+              { type: 'c:comp-filter', attributes: { name: 'VTODO' } },
+              { type: 'c:comp-filter', attributes: { name: 'VJOURNAL' } },
+            ],
+          },
+        ]),
+      ),
+    );
+    expect(convertedFilters[0]['c:comp-filter']['c:comp-filter']).toEqual([
+      { _attributes: { name: 'VEVENT' } },
+      { _attributes: { name: 'VTODO' } },
+      { _attributes: { name: 'VJOURNAL' } },
+    ]);
   });
 
   it('imports all-day recurrence and exceptions together, preserves text, and checks HTTP failures', async () => {
-    const { importExternalFeed } = await example('docs/docs/caldav/import-ical-feed.md');
+    const { importExternalFeed } = await example('docs/src/content/docs/caldav/import-ical-feed.md');
     const feed = [
       'BEGIN:VCALENDAR',
       'VERSION:2.0',
@@ -143,7 +164,7 @@ describe('executable documentation', () => {
   });
 
   it('runs the sync guide through login and commits changes and tokens together', async () => {
-    const { synchronizeCalendars } = await example('docs/docs/smart calendar sync.md');
+    const { synchronizeCalendars } = await example('docs/src/content/docs/smart-calendar-sync.md');
     const xml = (body: string) =>
       new Response(
         `<d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav" xmlns:cs="http://calendarserver.org/ns/">${body}</d:multistatus>`,

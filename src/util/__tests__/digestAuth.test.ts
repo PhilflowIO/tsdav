@@ -11,6 +11,7 @@ import {
 import { createDigestServer, parseDigestParams } from './digestServer';
 
 const md5 = (value: string) => createHash('md5').update(value).digest('hex');
+const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 const credentials = { username: 'digestuser', password: 'digest-test-pw' };
 const multistatus = () =>
   new Response('<d:multistatus xmlns:d="DAV:"/>', {
@@ -55,6 +56,7 @@ describe('parseAuthenticateHeader', () => {
 describe('selectDigestChallenge', () => {
   it('defaults to MD5 and prefers SHA-256 when both are offered', () => {
     expect(selectDigestChallenge('Digest realm="r", nonce="n"')?.algorithm).toBe('MD5');
+    expect(selectDigestChallenge('Digest realm="", nonce="n"')?.realm).toBe('');
     expect(
       selectDigestChallenge(
         'Digest realm="r", nonce="n", algorithm=MD5, Digest realm="r", nonce="n", algorithm=SHA-256',
@@ -66,6 +68,9 @@ describe('selectDigestChallenge', () => {
     expect(selectDigestChallenge('Digest realm="r", nonce="n", qop="auth-int"')).toBeUndefined();
     expect(
       selectDigestChallenge('Digest realm="r", nonce="n", algorithm=SHA-512-256'),
+    ).toBeUndefined();
+    expect(
+      selectDigestChallenge('Digest realm="r", nonce="n", algorithm=MD5-sess'),
     ).toBeUndefined();
     expect(selectDigestChallenge('Basic realm="r"')).toBeUndefined();
     expect(selectDigestChallenge(null)).toBeUndefined();
@@ -150,6 +155,21 @@ describe('buildDigestAuthorization', () => {
     });
   });
 
+  it('derives the session key for SHA-256-sess', async () => {
+    const challenge = selectDigestChallenge(
+      'Digest realm="r", nonce="n", qop=auth, algorithm=SHA-256-sess',
+    );
+    if (!challenge) throw new Error('challenge not parsed');
+    const header = await buildDigestAuthorization({ ...rfcExample, challenge });
+    const ha1 = sha256(`${sha256('Mufasa:r:Circle of Life')}:n:${rfcExample.cnonce}`);
+    expect(parseDigestParams(header)).toMatchObject({
+      algorithm: 'SHA-256-sess',
+      response: sha256(
+        `${ha1}:n:00000001:${rfcExample.cnonce}:auth:${sha256('GET:/dir/index.html')}`,
+      ),
+    });
+  });
+
   it('sends a non-ASCII username as an RFC 5987 username*', async () => {
     const challenge = selectDigestChallenge('Digest realm="r", nonce="n", qop=auth');
     if (!challenge) throw new Error('challenge not parsed');
@@ -164,6 +184,19 @@ describe('buildDigestAuthorization', () => {
     expect(parseDigestParams(header).response).toBe(
       md5(`${ha1}:n:00000001:${rfcExample.cnonce}:auth:${md5('GET:/dir/index.html')}`),
     );
+  });
+
+  it('hashes the username when the challenge asks for userhash', async () => {
+    const challenge = selectDigestChallenge('Digest realm="r", nonce="n", qop=auth, userhash=true');
+    if (!challenge) throw new Error('challenge not parsed');
+    const header = await buildDigestAuthorization({ ...rfcExample, username: 'jürgen', challenge });
+    const ha1 = md5('jürgen:r:Circle of Life');
+    expect(parseDigestParams(header)).toMatchObject({
+      username: md5('jürgen:r'),
+      userhash: 'true',
+      response: md5(`${ha1}:n:00000001:${rfcExample.cnonce}:auth:${md5('GET:/dir/index.html')}`),
+    });
+    expect(header).not.toContain('username*');
   });
 
   it('escapes quotes and backslashes in a quoted username', async () => {
@@ -417,6 +450,21 @@ describe('createDigestFetch', () => {
     expect(new Headers(init?.headers).has('authorization')).toBe(false);
   });
 
+  // Not covered here: browsers answer redirect: 'manual' with an opaque
+  // response, which the wrapper hands back to fetch to follow.
+  it('gives up after 20 redirects, like fetch', async () => {
+    const server = createDigestServer({
+      ...credentials,
+      handle: (_, path) => new Response(null, { status: 302, headers: { location: `${path}x` } }),
+    });
+
+    await expect(
+      createDigestFetch({ credentials, fetch: server.fetch })('http://dav.test/loop'),
+    ).rejects.toThrow('too many redirects');
+    // The challenge, the request and its 20 redirects.
+    expect(server.fetch).toHaveBeenCalledTimes(22);
+  });
+
   it("leaves redirects to the caller with redirect: 'manual'", async () => {
     const server = createDigestServer({
       ...credentials,
@@ -430,7 +478,44 @@ describe('createDigestFetch', () => {
     expect(server.fetch).toHaveBeenCalledTimes(2);
   });
 
-  it('fails clearly without WebCrypto and keeps a Basic client on Basic', async () => {
+  it('needs crypto.subtle only for SHA-256', async () => {
+    vi.stubGlobal('crypto', { getRandomValues: (array: Uint8Array) => array });
+    try {
+      const md5Server = createDigestServer({ ...credentials, handle: multistatus });
+      const sha256Server = vi.fn(
+        async () =>
+          new Response('', {
+            status: 401,
+            headers: {
+              'www-authenticate': 'Digest realm="r", nonce="n", qop="auth", algorithm=SHA-256',
+            },
+          }),
+      );
+
+      expect((await createDigestFetch({ credentials, fetch: md5Server.fetch })(url)).status).toBe(
+        207,
+      );
+      await expect(createDigestFetch({ credentials, fetch: sha256Server })(url)).rejects.toThrow(
+        'requires the WebCrypto API',
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('fails clearly without WebCrypto', async () => {
+    vi.stubGlobal('crypto', undefined);
+    try {
+      const server = createDigestServer({ ...credentials, handle: multistatus });
+      const digestFetch = createDigestFetch({ credentials, fetch: server.fetch });
+
+      await expect(digestFetch(url)).rejects.toThrow('requires the WebCrypto API');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('keeps a Basic client on Basic without WebCrypto', async () => {
     vi.stubGlobal('crypto', undefined);
     try {
       const responses = [
@@ -444,7 +529,7 @@ describe('createDigestFetch', () => {
       const state = createDigestAuthState(false);
       const digestFetch = createDigestFetch({ credentials, fetch: server, state });
 
-      await expect(digestFetch(url)).rejects.toThrow('requires the WebCrypto API');
+      expect((await digestFetch(url)).status).toBe(401);
       expect(state.active).toBe(false);
       expect((await digestFetch(url)).status).toBe(207);
     } finally {
@@ -525,6 +610,24 @@ describe('createDigestFetch', () => {
       expect(response.status).toBe(401);
       expect(state.active).toBe(false);
       expect(server).toHaveBeenCalledTimes(1);
+    });
+
+    it('copes with a fetch that reports a relative response url', async () => {
+      const server = createDigestServer({ ...credentials, handle: multistatus });
+      const relativeUrl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const response = await server.fetch(input, init);
+        Object.defineProperty(response, 'url', { value: '/dav.php/calendars/digestuser/' });
+        return response;
+      });
+      const digestFetch = createDigestFetch({
+        credentials,
+        fetch: relativeUrl,
+        state: createDigestAuthState(false),
+      });
+
+      expect((await digestFetch(url, basicInit())).status).toBe(207);
+      expect((await digestFetch(url, basicInit())).status).toBe(207);
+      expect(server.fetch).toHaveBeenCalledTimes(3);
     });
 
     it('leaves redirects to fetch while Basic is in use', async () => {

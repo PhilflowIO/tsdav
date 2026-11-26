@@ -13,7 +13,8 @@ export const parseDigestParams = (header: string): Record<string, string> =>
 
 /**
  * In-memory stand-in for a Digest-protected DAV server (qop=auth, MD5), which
- * validates every Authorization header independently of the code under test.
+ * validates every Authorization header independently of the code under test:
+ * nonce, uri, username, the response hash and that no nonce count is reused.
  */
 export const createDigestServer = (options: {
   username: string;
@@ -26,6 +27,7 @@ export const createDigestServer = (options: {
   const { username, password, realm = 'BaikalDAV', offerBasic = false } = options;
   let nonceCount = 1;
   let nonce = 'nonce-1';
+  const usedCounts = new Set<string>();
 
   const challenge = (stale = false) => {
     const digest = `Digest realm="${realm}",qop="auth",nonce="${nonce}",opaque="opaque-1"${
@@ -62,6 +64,11 @@ export const createDigestServer = (options: {
     if (params.username !== username || params.response !== expected) {
       return challenge();
     }
+    // A nonce count is accepted once per nonce; a repeat is a replay.
+    if (usedCounts.has(`${nonce}:${params.nc}`)) {
+      return challenge();
+    }
+    usedCounts.add(`${nonce}:${params.nc}`);
     return options.handle(method, url.pathname, init.body);
   });
 

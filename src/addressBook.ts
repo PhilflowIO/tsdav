@@ -11,9 +11,9 @@ import {
   cleanupFalsy,
   excludeHeaders,
   getDAVAttribute,
-  urlEquals,
   ensureTrailingSlash,
 } from './util/requestHelpers';
+import { getObjectUrl } from './util/objectUrl';
 import { getDAVUrlKey } from './util/syncHelpers';
 import { assertDAVDiscovery, assertDAVObjectResponses, getDAVText } from './util/responseHelpers';
 import { findMissingFieldNames, hasFields } from './util/typeHelpers';
@@ -241,7 +241,10 @@ export const fetchVCards = async (params: {
     .map((url) =>
       url.startsWith('http') ? url : new URL(url, ensureTrailingSlash(addressBook.url)).href,
     )
-    .filter((url) => !urlEquals(url, addressBook.url))
+    .filter(
+      (url) =>
+        getDAVUrlKey(url, addressBook.url) !== getDAVUrlKey(addressBook.url, addressBook.url),
+    )
     .filter(urlFilter)
     .map((url) => {
       const parsedUrl = new URL(url);
@@ -317,7 +320,7 @@ export const createVCard = async (params: {
     fetch: fetchOverride,
   } = params;
   return createObject({
-    url: new URL(filename, ensureTrailingSlash(addressBook.url)).href,
+    url: getObjectUrl(addressBook.url, filename),
     data: vCardString,
     headers: excludeHeaders(
       {

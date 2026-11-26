@@ -14,10 +14,9 @@ const xml = (body: string) =>
   });
 
 // A Baikal-like server: /.well-known redirects without auth, everything else needs Digest.
-const createBaikal = (options: { offerBasic?: boolean } = {}) =>
+const createBaikal = () =>
   createDigestServer({
     ...credentials,
-    ...options,
     isPublic: (path) => path.startsWith('/.well-known/'),
     handle: (method, path) => {
       if (path.startsWith('/.well-known/')) {
@@ -133,6 +132,93 @@ describe('Digest authentication through DAVClient', () => {
     expect(server.fetch).toHaveBeenCalledTimes(1);
     expect(server.authorizationOf(0)).toBeNull();
   });
+
+  it.each(['class', 'factory'])(
+    'preserves explicit Authorization through the %s client',
+    async (api) => {
+      const server = createBaikal();
+      const params = { serverUrl, credentials, authMethod: 'Digest' as const, fetch: server.fetch };
+      const client = api === 'class' ? new DAVClient(params) : await createDAVClient(params);
+      await client.createObject({ url: `${calendar.url}initial.ics`, data: 'event' });
+      const before = server.fetch.mock.calls.length;
+      const response = await client.createObject({
+        url: `${calendar.url}custom.ics`,
+        data: 'event',
+        headers: { Authorization: 'Bearer custom-token' },
+      });
+      expect(response.status).toBe(401);
+      expect(server.fetch).toHaveBeenCalledTimes(before + 1);
+      expect(server.authorizationOf(before)).toBe('Bearer custom-token');
+      await client.davRequest({
+        url: calendar.url,
+        init: { method: 'PROPFIND', headers: { authorization: 'Bearer low-level' } },
+        parseOutgoing: false,
+      });
+      expect(server.authorizationOf(before + 1)).toBe('Bearer low-level');
+    },
+  );
+
+  it('preserves Authorization supplied through fetchOptions', async () => {
+    const server = createBaikal();
+    const client = new DAVClient({
+      serverUrl,
+      credentials,
+      authMethod: 'Digest',
+      fetch: server.fetch,
+      fetchOptions: { headers: new Headers({ Authorization: 'Bearer configured-token' }) },
+    });
+    await client.createObject({ url: `${calendar.url}custom.ics`, data: 'event' });
+    expect(server.fetch).toHaveBeenCalledTimes(1);
+    expect(server.authorizationOf(0)).toBe('Bearer configured-token');
+  });
+
+  it('starts a fresh session when client credentials change', async () => {
+    const first = createBaikal();
+    const second = createDigestServer({
+      username: 'another',
+      password: 'new-password',
+      handle: () => new Response(null, { status: 201 }),
+    });
+    const mutableCredentials = { ...credentials };
+    const client = new DAVClient({
+      serverUrl,
+      credentials: mutableCredentials,
+      authMethod: 'Digest',
+      fetch: first.fetch,
+    });
+    await client.createObject({ url: `${calendar.url}first.ics`, data: 'event' });
+    Object.assign(mutableCredentials, { username: 'another', password: 'new-password' });
+    expect(
+      (
+        await client.createObject({
+          url: `${calendar.url}second.ics`,
+          data: 'event',
+          fetch: second.fetch,
+        })
+      ).status,
+    ).toBe(201);
+    expect(second.authorizationOf(0)).toBeNull();
+    expect(second.authorizationOf(1)).toContain('nc=00000001');
+  });
+
+  it('still sends a given digestString as a static header', async () => {
+    const server = createBaikal();
+    const client = await createDAVClient({
+      serverUrl,
+      credentials: { ...credentials, digestString: 'username="digestuser", response="abc"' },
+      authMethod: 'Digest',
+      fetch: server.fetch,
+    });
+
+    const response = await client.createObject({
+      url: `${calendar.url}static.ics`,
+      data: 'BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n',
+    });
+
+    expect(response.status).toBe(401);
+    expect(server.fetch).toHaveBeenCalledTimes(1);
+    expect(server.authorizationOf(0)).toBe('Digest username="digestuser", response="abc"');
+  });
 });
 
 describe('account discovery on a runtime without WebCrypto', () => {
@@ -176,7 +262,7 @@ describe('account discovery on a runtime without WebCrypto', () => {
   );
 
   it.each(cases)(
-    'createDAVClient rejects with the WebCrypto requirement (authMethod $authMethod, .well-known $wellKnown)',
+    'createDAVClient reports the appropriate auth error without WebCrypto (authMethod $authMethod, .well-known $wellKnown)',
     async ({ authMethod, wellKnown }) => {
       vi.stubGlobal('crypto', undefined);
 
@@ -188,15 +274,18 @@ describe('account discovery on a runtime without WebCrypto', () => {
         fetch: createDigestOnly(wellKnown),
       });
 
-      await expect(login).rejects.toBeInstanceOf(DigestUnsupportedError);
-      await expect(login).rejects.toThrow(
-        /Digest authentication requires the WebCrypto API.*Node\.js >= 19/,
-      );
+      if (authMethod === 'Digest') {
+        await expect(login).rejects.toBeInstanceOf(DigestUnsupportedError);
+        await expect(login).rejects.toThrow(/Digest authentication requires the WebCrypto API/);
+      } else {
+        await expect(login).rejects.toThrow('Invalid credentials');
+        await expect(login).rejects.not.toBeInstanceOf(DigestUnsupportedError);
+      }
     },
   );
 
   it.each(cases)(
-    'DAVClient.login rejects with the WebCrypto requirement (authMethod $authMethod, .well-known $wellKnown)',
+    'DAVClient.login reports the appropriate auth error without WebCrypto (authMethod $authMethod, .well-known $wellKnown)',
     async ({ authMethod, wellKnown }) => {
       vi.stubGlobal('crypto', undefined);
 
@@ -209,7 +298,9 @@ describe('account discovery on a runtime without WebCrypto', () => {
       });
 
       await expect(client.login()).rejects.toThrow(
-        /Digest authentication requires the WebCrypto API.*Node\.js >= 19/,
+        authMethod === 'Digest'
+          ? /Digest authentication requires the WebCrypto API/
+          : /Invalid credentials/,
       );
     },
   );
