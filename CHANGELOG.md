@@ -1,4 +1,4 @@
-## Unreleased
+## v2.5.1 (PhilflowIO fork)
 
 ##### fixes
 - `fetchVCards` lists the address book with a `PROPFIND` Depth 1 instead of an `addressbook-query`, so OX App Suite (mailbox.org) returns its contacts: it answers the query's default `FN` prop-filter with an empty multistatus. The collection itself and sub-collections are skipped (PhilflowIO/tsdav#48)
