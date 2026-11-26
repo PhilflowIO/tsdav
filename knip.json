@@ -5,12 +5,12 @@
       "entry": [
         "src/index.ts!",
         "src/**/*.test.ts",
-        "tests/**/*.ts",
+        "tests/**/*.{ts,mjs}",
         "scripts/*.{cjs,mjs}"
       ],
       "project": [
         "src/**/*.ts",
-        "tests/**/*.ts"
+        "tests/**/*.{ts,mjs}"
       ],
       "ignore": [
         "src/__tests__/integration/**"
@@ -19,22 +19,17 @@
     },
     "docs": {
       "entry": [
-        "docusaurus.config.js",
-        "src/**/*.{ts,tsx}",
-        "tests/*.cjs",
-        "docusuarusWebpack5Plugin.js"
+        "astro.config.mjs",
+        "src/**/*.{ts,tsx,astro}",
+        "tests/*.test.cjs"
       ],
       "project": [
-        "src/**/*.{ts,tsx}",
-        "docs/**/*.mdx"
+        "src/**/*.{ts,tsx,astro}",
+        "src/content/docs/**/*.{md,mdx}"
       ],
       "ignoreDependencies": [
-        "@types/react-router-dom",
-        "@docusaurus/module-type-aliases",
-        "@docusaurus/theme-classic",
-        "@docusaurus/router"
-      ],
-      "docusaurus": false
+        "npm"
+      ]
     }
   }
 }

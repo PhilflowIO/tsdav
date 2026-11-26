@@ -62,7 +62,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0 # full history, for the ancestry check below
@@ -105,14 +105,17 @@ jobs:
 
       # pnpm version comes from package.json `packageManager`.
       - name: Setup pnpm
-        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
       # No dependency cache: the job that produces the release bytes must not
       # restore a cache that other workflow runs can write.
       - name: Setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: '.nvmrc'
+          # setup-node >= 5 turns caching on by itself when package.json names a
+          # package manager.
+          package-manager-cache: false
 
       - name: Install dependencies
         run: pnpm i --frozen-lockfile
@@ -132,6 +135,10 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+      # Digest against a real HTTP server, through the built bundles.
+      - name: Digest over HTTP
+        run: pnpm test:runtime:digest
 
       # The tarball is packed from the working tree; it must be the dist that
       # is committed under the tag, not something only this run produced.
@@ -211,7 +218,7 @@ jobs:
     steps:
       # No checkout: a consumer has nothing but the package.
       - name: Setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ matrix.node-version }}
 
@@ -286,7 +293,7 @@ jobs:
 
     steps:
       - name: Setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
           registry-url: 'https://registry.npmjs.org'

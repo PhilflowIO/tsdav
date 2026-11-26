@@ -1,6 +1,6 @@
 {
   "name": "@philflow/tsdav",
-  "version": "2.5.1",
+  "version": "2.6.0",
   "description": "WebDAV, CalDAV and CardDAV client for Node.js and the browser (PhilflowIO fork of tsdav with VTODO, MKCOL address books and Digest auth)",
   "keywords": [
     "dav",
@@ -69,6 +69,8 @@
     "watch": "tsc --watch --outDir ./dist",
     "check:dependencies": "knip --dependencies",
     "test:consumer": "tsc -p tests/consumer/tsconfig.json --noEmit",
+    "test:runtime:digest": "node tests/digest-runtime.mjs",
+    "test:browser:digest": "node tests/digest-browser.mjs",
     "test:examples": "node scripts/check-doc-examples.cjs && vitest run tests/docs-examples.test.ts",
     "prepare": "husky"
   },
@@ -77,19 +79,19 @@
     "xml-js": "1.6.11"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.12",
+    "@biomejs/biome": "2.5.15",
     "@types/debug": "4.1.13",
-    "@types/node": "26.4.1",
-    "@vitest/coverage-v8": "^5.0.0",
-    "dotenv": "17.4.2",
-    "husky": "^9.1.7",
-    "ical.js": "^2.2.1",
-    "knip": "^6.39.0",
-    "rolldown": "1.2.7",
+    "@types/node": "26.6.5",
+    "@vitest/coverage-v8": "5.0.4",
+    "husky": "9.1.7",
+    "ical.js": "2.2.1",
+    "knip": "6.41.0",
+    "playwright": "1.64.0",
+    "rolldown": "1.2.14",
     "typescript": "7.0.2",
-    "vitest": "^5.0.0"
+    "vitest": "5.0.4"
   },
-  "packageManager": "pnpm@10.34.4",
+  "packageManager": "pnpm@12.11.2",
   "engines": {
     "node": ">=18"
   },

@@ -1,3 +1,26 @@
+## v2.6.0 (PhilflowIO fork)
+
+Upstream v2.5.1 merged into the fork (upstream v2.4.0, v2.5.0 and v2.5.1, sections below). Fork additions are unchanged unless listed here (PhilflowIO/tsdav#50).
+
+##### fixes (from upstream)
+- `createCalendarObject`, `createVCard` and `createTodo` treat `filename` as one path segment inside the collection: `../x.ics` and `/x.ics` throw instead of writing outside it, and `?`, `#`, `\`, a stray `%` and whitespace are percent-encoded instead of truncating the name (upstream 724bc39)
+- OAuth access tokens are refreshed a minute before they expire, and `expires_in` sent as a numeric string is accepted (upstream fdeddd5)
+- a sync token the server rejects (`DAV:valid-sync-token`) starts a full resync from an empty token instead of failing the sync; local objects missing from an initial WebDAV sync are reported as deleted (upstream 1fac1c2)
+- DAV hrefs that differ only in percent-encoding (`a@b.ics` and `a%40b.ics`) match, so object fetches no longer fail as incomplete (upstream c0f8e39)
+- DAV client, sync and XML parser fixes: collection self-entries normalised by `getDAVUrlKey`, empty `href`s skipped with `expand`, parsed XML properties writable, `authHeaders` resolved without `login()` for Basic, Bearer and Custom, client and per-call `fetchOptions` merged instead of overwritten, the RFC 6578 sync fallback also on a 207 error body, string bodies passed through `davRequest` unchanged (upstream #286)
+- Digest hardening: per-realm sessions honouring the `domain` protection space, a kept cnonce for `-sess` algorithms, an explicit `Authorization` header (request headers or `fetchOptions.headers`) bypasses Digest, a credential change starts a fresh session, fetch `credentials` default to `'omit'` while Digest is in use, safe handling of browser opaque redirects, and MD5 is chosen over SHA-256 when `crypto.subtle` is missing; a Basic client without WebCrypto keeps Basic's 401 instead of throwing (upstream 1f7ebb1)
+
+##### behaviour changes for fork users
+- a `credentials.digestString` is sent as-is with `authMethod: 'Digest'` even when a `password` is set, as upstream does; before, the fork ignored it whenever a `password` was present. It is no longer marked deprecated
+- `-sess` Digest challenges without `qop` are ignored (the session key needs the cnonce, which is only sent with `qop`), as upstream does
+- a Basic client that the server switches to Digest after an automatic redirect now throws a `TypeError` for any method but `GET` and `HEAD` (pass the final DAV URL instead), and an opaque browser redirect is no longer followed; before, the fork answered the challenge and followed the redirect itself, as upstream does
+- a request that carries its own `Authorization` header skips Digest and the automatic Basic-to-Digest switch, as upstream does
+
+##### build
+- tooling moves to pnpm 12, Vite 8 and Vitest 5.0.4 with exact devDependency pins; `dotenv` and the pnpm overrides are gone (`.env` is read with `process.loadEnvFile`)
+- GitHub Actions move to checkout v7, setup-node v7 and pnpm/action-setup v6, still pinned to commit SHAs; CI adds Digest checks over HTTP on Node, Bun and Deno and in Chromium, and the release build runs the Node Digest check
+- the docs site moves to Astro 7 and Starlight; the fork's VTODO and `makeAddressBook` pages move with it
+
 ## v2.5.1 (PhilflowIO fork)
 
 ##### fixes
@@ -74,6 +97,56 @@ Upstream v2.3.5 merged into the fork. Fork-only additions on top of upstream:
 - `validateISO8601TimeRange` is gone; use `validateTimeRange`
 - `fetchTodos` with `expand: true` now requires a `timeRange` instead of silently skipping the expansion
 - fetching objects by URL now throws on a failed or incomplete server response instead of returning a partial or empty list
+## v2.5.1
+
+##### bug fixes
+
+- normalize collection self-entry URLs with `getDAVUrlKey` in `createAccount` and `fetchVCards` so percent-encoding differences (such as `@` vs `%40`) do not leak collection URLs into object requests ([#286](https://github.com/natelindev/tsdav/pull/286))
+- skip empty or whitespace-only `href` responses in `fetchCalendarObjects` when `expand` is enabled with permissive `urlFilter`
+- define top-level properties in `parseDAVXML` as `configurable` and `writable` so strict-mode consumers can mutate or delete parsed properties
+- lazily resolve `authHeaders` on `DAVClient` for `Basic`, `Bearer`, and `Custom` authentication without requiring `login()`, and default missing `Basic` credentials to empty strings instead of `undefined:undefined`
+- merge client/default `fetchOptions` (including `headers`) with per-call `fetchOptions` in `DAVClient` and `defaultParam` instead of overwriting base options
+- trigger RFC 6578 `valid-sync-token` full-sync fallback for parsed 207 Multi-Status `<error><valid-sync-token/></error>` responses as well as raw XML 4xx responses
+- pass string `body` values through `davRequest` unchanged when `convertIncoming` is `true` instead of spreading character indices into XML elements
+- fix `mergeObjectDupKeyArray` in the docs filter converter to preserve 3+ sibling filters as a flat ordered array, and resolve `src/content/docs` cleanly in `llms-full.txt`
+
+## v2.5.0
+
+##### bug fixes
+
+- treat the `filename` of `createCalendarObject` and `createVCard` as one path segment inside the collection: names such as `urn:uuid:….ics` no longer parse as URL schemes, and `?`, `#`, `\`, stray `%`, and whitespace are percent-encoded while existing percent-escapes are kept; names containing `/`, or equal to `.` or `..`, now throw instead of writing outside the collection
+- resynchronize from an empty token when a server rejects an expired sync token (`DAV:valid-sync-token`) instead of failing the sync, and report local objects missing from an initial WebDAV sync as deleted
+- match DAV hrefs that differ only in percent-encoding (such as `a@b.ics` and `a%40b.ics`), so object fetches no longer fail as incomplete and principal URLs with email addresses still match
+- refresh OAuth access tokens a minute before they expire, and accept `expires_in` sent as a numeric string instead of refreshing on every request
+
+##### tooling
+
+- move development to pnpm 12, Vite 8 (via Vitest 5.0.4), and current patch releases of Biome, Rolldown, Knip, and Playwright; drop `dotenv` and the pinned build-tool overrides
+- update GitHub Actions, add Node.js 26 to CI, and remove the unused npm token from the trusted-publishing release workflow
+- type-check library sources without Node.js globals, so runtime-specific APIs cannot slip into shared code
+- upgrade the documentation site to Astro 7 and Starlight 0.42 with pnpm 12
+
+## v2.4.0
+
+##### features
+
+- implement HTTP Digest challenge/response authentication for `DAVClient` and `createDAVClient`, including discovery, object writes, stale nonces, and custom fetch transports; thanks to [@PhilflowIO](https://github.com/PhilflowIO) for reporting [#283](https://github.com/natelindev/tsdav/issues/283) and contributing [#284](https://github.com/natelindev/tsdav/pull/284)
+- support MD5, MD5-sess, SHA-256, and SHA-256-sess with `qop=auth`, plus MD5/SHA-256 without `qop`, while preserving precomputed `digestString` headers
+- negotiate Digest for Basic clients when a same-origin server offers only Digest and the runtime supports the required crypto APIs
+
+##### bug fixes
+
+- retain session keys and client nonces for session algorithms, isolate realms, and honor Digest protection-space URL prefixes
+- sign the final URI for recoverable browser GET/HEAD redirects and stop other opaque browser redirects without replaying writes; use canonical DAV URLs for PROPFIND, REPORT, PUT, and DELETE in browsers
+- keep browser-managed HTTP authentication from intercepting Digest challenges by default, while preserving explicit cookie credential options
+- preserve explicit authorization headers and header exclusions, reset cached sessions after credential changes, and keep Basic's original 401 behavior when WebCrypto is unavailable
+- report invalid discovery credentials even when later root candidates return unrelated HTML responses
+
+##### verification and documentation
+
+- document runtime requirements, Node.js 18 WebCrypto setup, Baikal configuration, browser/CORS behavior, supported algorithms, and current limitations
+- add regression coverage, local HTTP checks for Node.js/Bun/Deno, and Chromium checks in CI and release verification, including session algorithms, nonce counts, redirects, wrong passwords, and authorization scope
+- migrate documentation to Astro and Starlight while preserving the library's maintained API examples
 
 ## v2.3.5
 

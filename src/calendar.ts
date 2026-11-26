@@ -21,6 +21,7 @@ import {
   defaultIcsFilter,
   validateTimeRange,
 } from './util/requestHelpers';
+import { getObjectUrl } from './util/objectUrl';
 import { getDAVUrlKey } from './util/syncHelpers';
 import { assertDAVDiscovery, assertDAVObjectResponses, getDAVText } from './util/responseHelpers';
 import { findMissingFieldNames, hasFields } from './util/typeHelpers';
@@ -456,10 +457,13 @@ export const fetchCalendarObjects = async (params: {
   if (calendarObjectUrls.length > 0) {
     if (expand && !objectUrls) {
       calendarObjectResults = initialResponses.filter((res) => {
-        const fullUrl = (res.href ?? '').startsWith('http')
+        if (typeof res.href !== 'string' || res.href.trim().length === 0) {
+          return false;
+        }
+        const fullUrl = res.href.startsWith('http')
           ? res.href
-          : new URL(res.href ?? '', ensureTrailingSlash(calendar.url)).href;
-        return urlFilter(fullUrl ?? '');
+          : new URL(res.href, ensureTrailingSlash(calendar.url)).href;
+        return urlFilter(fullUrl);
       });
     } else if (!useMultiGet) {
       calendarObjectResults = await calendarQuery({
@@ -566,7 +570,7 @@ export const createCalendarObject = async (params: {
   } = params;
 
   return createObject({
-    url: new URL(filename, ensureTrailingSlash(calendar.url)).href,
+    url: getObjectUrl(calendar.url, filename),
     data: iCalString,
     headers: excludeHeaders(
       {

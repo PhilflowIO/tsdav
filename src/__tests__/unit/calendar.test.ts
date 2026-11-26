@@ -78,6 +78,48 @@ describe('fetchCalendarObjects', () => {
     );
   });
 
+  it('should skip empty or whitespace href responses during expand with permissive urlFilter', async () => {
+    mockedCollectionQuery.mockResolvedValue([
+      {
+        href: '   ',
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        raw: '<xml/>',
+        props: {
+          getetag: '"skip"',
+          calendarData: 'SKIP',
+        },
+      },
+      {
+        href: '/cal/event.ics',
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        raw: '<xml/>',
+        props: {
+          getetag: '"ok"',
+          calendarData: 'KEEP',
+        },
+      },
+    ]);
+
+    const objects = await fetchCalendarObjects({
+      calendar: { url: 'http://example.com/cal/' },
+      timeRange: { start: '2022-01-01T00:00:00Z', end: '2022-01-02T00:00:00Z' },
+      expand: true,
+      urlFilter: () => true,
+    });
+
+    expect(objects).toEqual([
+      {
+        url: 'http://example.com/cal/event.ics',
+        etag: '"ok"',
+        data: 'KEEP',
+      },
+    ]);
+  });
+
   it('should still perform two queries if expand is false (minimal first query)', async () => {
     // First call: calendarQuery for hrefs
     mockedCollectionQuery.mockResolvedValueOnce([
@@ -581,6 +623,28 @@ describe('createCalendarObject', () => {
     expect(callArgs.data).toBe('BEGIN:VCALENDAR\nEND:VCALENDAR');
     expect(callArgs.headers?.['content-type']).toBe('text/calendar; charset=utf-8');
     expect(callArgs.headers?.['If-None-Match']).toBe('*');
+  });
+
+  it('should keep a UID-based filename inside the calendar', async () => {
+    mockedCreateObject.mockResolvedValue({ ok: true, status: 201 } as any);
+
+    await createCalendarObject({
+      calendar: { url: 'http://example.com/cal/' },
+      iCalString: 'BEGIN:VCALENDAR\nEND:VCALENDAR',
+      filename: 'urn:uuid:42#1.ics',
+    });
+
+    expect(mockedCreateObject.mock.calls[0][0].url).toBe(
+      'http://example.com/cal/urn:uuid:42%231.ics',
+    );
+    await expect(
+      createCalendarObject({
+        calendar: { url: 'http://example.com/cal/' },
+        iCalString: 'BEGIN:VCALENDAR\nEND:VCALENDAR',
+        filename: '../other.ics',
+      }),
+    ).rejects.toThrow('Invalid object filename');
+    expect(mockedCreateObject).toHaveBeenCalledTimes(1);
   });
 });
 

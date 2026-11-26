@@ -18,10 +18,12 @@ export type DigestChallenge = {
     realm: string;
     nonce: string;
     opaque?: string;
+    domain?: string;
     /** `auth` when the server offers it, undefined for RFC 2069 servers without qop */
     qop?: 'auth';
     algorithm: DigestAlgorithm;
     stale: boolean;
+    /** RFC 7616 §3.4.4: the server asks for the username to be sent hashed */
     userhash: boolean;
 };
 /**
@@ -30,10 +32,13 @@ export type DigestChallenge = {
  */
 export type DigestAuthState = {
     active: boolean;
-    challenges: Map<string, {
-        challenge: DigestChallenge;
-        nc: number;
-    }>;
+    challenges: Map<string, DigestSession[]>;
+};
+type DigestSession = {
+    challenge: DigestChallenge;
+    scopes: string[];
+    nc: number;
+    cnonce: string;
 };
 /**
  * Parse a `WWW-Authenticate` header value into its challenges. `fetch` joins
@@ -45,8 +50,9 @@ export declare const parseAuthenticateHeader: (value: string) => AuthChallenge[]
  * value. Returns undefined when there is none, or when `unlessBasic` is set
  * and the server also accepts Basic.
  */
-export declare const selectDigestChallenge: (header: string | null | undefined, { unlessBasic }?: {
+export declare const selectDigestChallenge: (header: string | null | undefined, { unlessBasic, allowSHA256, }?: {
     unlessBasic?: boolean;
+    allowSHA256?: boolean;
 }) => DigestChallenge | undefined;
 /**
  * Thrown when a server has to be answered with Digest but the runtime has no
@@ -57,6 +63,10 @@ export declare class DigestUnsupportedError extends Error {
     readonly code = "TSDAV_DIGEST_UNSUPPORTED";
     constructor();
 }
+/**
+ * Also recognises the error by its `code`, so a copy of tsdav bundled twice
+ * (or an error that crossed a realm) is still detected.
+ */
 export declare const isDigestUnsupportedError: (err: unknown) => err is DigestUnsupportedError;
 /**
  * Compute the `Authorization` header value for one request (RFC 7616 §3.4;
@@ -71,7 +81,7 @@ export declare const buildDigestAuthorization: (params: {
     nc: number;
     cnonce: string;
 }) => Promise<string>;
-export declare const createDigestAuthState: (active: boolean) => DigestAuthState;
+export declare const createDigestAuthState: (active?: boolean) => DigestAuthState;
 /**
  * Wrap `fetch` with Digest authentication.
  *
@@ -80,13 +90,13 @@ export declare const createDigestAuthState: (active: boolean) => DigestAuthState
  * - A 401 with a Digest challenge is answered by exactly one retry; this also
  *   covers an expired (`stale=true`) nonce. A 401 on that retry is returned to
  *   the caller as a credentials error.
- * - With an inactive `state` (Basic auth), the wrapper only switches to
- *   Digest when a 401 offers Digest and no Basic. It never falls back from
- *   Digest to Basic.
+ * - With an inactive `state` (Basic auth), the wrapper passes requests through
+ *   and only switches to Digest when a 401 offers Digest and no Basic. It never
+ *   falls back from Digest to Basic.
  * - While Digest is active, redirects are followed by the wrapper, because the
- *   `Authorization` header is bound to the request URI. Credentials are only sent to the origin of
- *   the original request. A caller's `redirect: 'manual'` or `'error'` is
- *   passed through to `fetch` unchanged.
+ *   `Authorization` header is bound to the request URI. Credentials are only
+ *   sent to the origin of the original request. A caller's `redirect: 'manual'`
+ *   or `'error'` is passed through to `fetch` unchanged.
  *
  * Requests that start in parallel before a challenge is known each get their
  * own 401 first; a client's login caches the challenge before that happens.

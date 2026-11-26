@@ -1,18 +1,16 @@
 {
-  "extends": "@tsconfig/docusaurus/tsconfig.json",
+  "extends": "astro/tsconfigs/strict",
   "include": [
-    "./src/"
+    ".astro/types.d.ts",
+    "**/*"
+  ],
+  "exclude": [
+    "dist"
   ],
   "compilerOptions": {
-    "baseUrl": null,
-    "paths": {
-      "@site/*": [
-        "./*"
-      ],
-      "xml-js": [
-        "./node_modules/xml-js"
-      ]
-    },
-    "strict": false
+    "jsx": "react-jsx",
+    "jsxImportSource": "react",
+    "verbatimModuleSyntax": false,
+    "skipLibCheck": true
   }
 }
