@@ -211,20 +211,31 @@ export const fetchVCards = async (params: {
     );
   }
 
+  // List the address book with a plain PROPFIND (as vdirsyncer does) rather than an
+  // addressbook-query: some servers (e.g. OX App Suite, used by mailbox.org) answer
+  // the query's FN prop-filter with an empty multistatus.
+  const listVCardHrefs = async (): Promise<string[]> => {
+    const listed = await propfind({
+      url: addressBook.url,
+      props: {
+        [`${DAVNamespaceShort.DAV}:getetag`]: {},
+        [`${DAVNamespaceShort.DAV}:resourcetype`]: {},
+      },
+      depth: '1',
+      headers: excludeHeaders(headers, headersToExclude),
+      headersToExclude,
+      fetchOptions,
+      fetch: fetchOverride,
+    });
+    return (listed ?? [])
+      .filter((res) => !res.props?.resourcetype?.collection)
+      .map((res) => res.href ?? '');
+  };
+
   const vcardUrls = (
     objectUrls ??
-    // fetch all objects of the calendar
-    (
-      await addressBookQuery({
-        url: addressBook.url,
-        props: { [`${DAVNamespaceShort.DAV}:getetag`]: {} },
-        depth: '1',
-        headers: excludeHeaders(headers, headersToExclude),
-        headersToExclude,
-        fetchOptions,
-        fetch: fetchOverride,
-      })
-    ).map((res) => res.href ?? '')
+    // fetch all objects of the address book
+    (await listVCardHrefs())
   )
     .filter((url): url is string => typeof url === 'string' && url.trim().length > 0)
     .map((url) =>

@@ -1043,15 +1043,21 @@ const fetchVCards = async (params) => {
 		if (!addressBook) throw new Error("cannot fetchVCards for undefined addressBook");
 		throw new Error(`addressBook must have ${findMissingFieldNames(addressBook, requiredFields)} before fetchVCards`);
 	}
-	const vcardUrls = (objectUrls ?? (await addressBookQuery({
-		url: addressBook.url,
-		props: { [`d:getetag`]: {} },
-		depth: "1",
-		headers: excludeHeaders(headers, headersToExclude),
-		headersToExclude,
-		fetchOptions,
-		fetch: fetchOverride
-	})).map((res) => res.href ?? "")).filter((url) => typeof url === "string" && url.trim().length > 0).map((url) => url.startsWith("http") ? url : new URL(url, ensureTrailingSlash(addressBook.url)).href).filter((url) => !urlEquals(url, addressBook.url)).filter(urlFilter).map((url) => {
+	const listVCardHrefs = async () => {
+		return (await propfind({
+			url: addressBook.url,
+			props: {
+				[`d:getetag`]: {},
+				[`d:resourcetype`]: {}
+			},
+			depth: "1",
+			headers: excludeHeaders(headers, headersToExclude),
+			headersToExclude,
+			fetchOptions,
+			fetch: fetchOverride
+		}) ?? []).filter((res) => !res.props?.resourcetype?.collection).map((res) => res.href ?? "");
+	};
+	const vcardUrls = (objectUrls ?? await listVCardHrefs()).filter((url) => typeof url === "string" && url.trim().length > 0).map((url) => url.startsWith("http") ? url : new URL(url, ensureTrailingSlash(addressBook.url)).href).filter((url) => !urlEquals(url, addressBook.url)).filter(urlFilter).map((url) => {
 		const parsedUrl = new URL(url);
 		return `${parsedUrl.pathname}${parsedUrl.search}`;
 	});
