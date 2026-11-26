@@ -13,6 +13,8 @@ Upstream v2.5.1 merged into the fork (upstream v2.4.0, v2.5.0 and v2.5.1, sectio
 ##### behaviour changes for fork users
 - a `credentials.digestString` is sent as-is with `authMethod: 'Digest'` even when a `password` is set, as upstream does; before, the fork ignored it whenever a `password` was present. It is no longer marked deprecated
 - `-sess` Digest challenges without `qop` are ignored (the session key needs the cnonce, which is only sent with `qop`), as upstream does
+- a Basic client that the server switches to Digest after an automatic redirect now throws a `TypeError` for any method but `GET` and `HEAD` (pass the final DAV URL instead), and an opaque browser redirect is no longer followed; before, the fork answered the challenge and followed the redirect itself, as upstream does
+- a request that carries its own `Authorization` header skips Digest and the automatic Basic-to-Digest switch, as upstream does
 
 ##### build
 - tooling moves to pnpm 12, Vite 8 and Vitest 5.0.4 with exact devDependency pins; `dotenv` and the pnpm overrides are gone (`.env` is read with `process.loadEnvFile`)
